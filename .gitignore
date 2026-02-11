@@ -1,0 +1,22 @@
+# Build output
+target/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.*
+
+# Test coverage
+coverage/
+
+# Misc
+*.log
