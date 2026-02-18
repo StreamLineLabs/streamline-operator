@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: streamline-operator
+  labels:
+    app.kubernetes.io/name: streamline-operator
+    app.kubernetes.io/part-of: streamline
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: streamline-operator
+subjects:
+  - kind: ServiceAccount
+    name: streamline-operator
+    namespace: streamline-system

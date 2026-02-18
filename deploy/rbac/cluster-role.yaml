@@ -1,0 +1,115 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: streamline-operator
+  labels:
+    app.kubernetes.io/name: streamline-operator
+    app.kubernetes.io/part-of: streamline
+rules:
+  # -----------------------------------------------------------
+  # Streamline CRDs (streamline.io/v1alpha1)
+  # The operator watches and reconciles all three custom resources.
+  # -----------------------------------------------------------
+  - apiGroups: ["streamline.io"]
+    resources:
+      - streamlineclusters
+      - streamlinetopics
+      - streamlineusers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # CRD status subresource — each controller updates .status
+  - apiGroups: ["streamline.io"]
+    resources:
+      - streamlineclusters/status
+      - streamlinetopics/status
+      - streamlineusers/status
+    verbs: ["get", "update", "patch"]
+
+  # CRD finalizers — controllers add/remove finalizers for safe cleanup
+  - apiGroups: ["streamline.io"]
+    resources:
+      - streamlineclusters/finalizers
+      - streamlinetopics/finalizers
+      - streamlineusers/finalizers
+    verbs: ["update"]
+
+  # -----------------------------------------------------------
+  # StatefulSets (apps/v1)
+  # ClusterController creates and manages StatefulSets for broker pods.
+  # -----------------------------------------------------------
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # -----------------------------------------------------------
+  # Services (v1)
+  # ClusterController creates headless and client-facing Services.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # -----------------------------------------------------------
+  # ConfigMaps (v1)
+  # ClusterController creates ConfigMaps for Streamline configuration.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # -----------------------------------------------------------
+  # Secrets (v1)
+  # UserController creates Secrets for user credentials.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # -----------------------------------------------------------
+  # PersistentVolumeClaims (v1)
+  # ClusterController cleans up PVCs on cluster deletion.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "delete"]
+
+  # -----------------------------------------------------------
+  # Pods (v1)
+  # ClusterController reads pod status for health monitoring.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # -----------------------------------------------------------
+  # Events (v1)
+  # Allows the operator to emit Kubernetes events for observability.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  # -----------------------------------------------------------
+  # HorizontalPodAutoscalers (autoscaling/v2)
+  # AutoscalingController creates/updates/deletes HPAs for clusters.
+  # -----------------------------------------------------------
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # -----------------------------------------------------------
+  # Leases (coordination.k8s.io/v1)
+  # Used for leader election in HA deployments.
+  # -----------------------------------------------------------
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # -----------------------------------------------------------
+  # Namespaces (v1)
+  # The operator reads namespaces to detect its own namespace for
+  # leader election and to support multi-namespace watching.
+  # -----------------------------------------------------------
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
