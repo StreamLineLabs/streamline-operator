@@ -1,0 +1,11 @@
+# CODEOWNERS for streamline-operator
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# These owners will be automatically requested for review on pull requests.
+# The last matching pattern takes precedence.
+
+# Default owner for everything in the repo
+* @streamlinelabs/infra-team
+
+# CI/CD and GitHub configuration
+/.github/ @streamlinelabs/infra-team @streamlinelabs/maintainers
