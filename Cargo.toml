@@ -9,7 +9,7 @@ repository = "https://github.com/streamlinelabs/streamline-operator"
 readme = "README.md"
 keywords = ["kubernetes", "operator", "streamline", "kafka", "streaming"]
 categories = ["network-programming", "asynchronous"]
-rust-version = "1.75"
+rust-version = "1.80"
 
 [dependencies]
 # Kubernetes client and runtime
@@ -53,3 +53,8 @@ rand = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
