@@ -1,6 +1,7 @@
 # Streamline Operator
 
 [![CI](https://github.com/streamlinelabs/streamline-operator/actions/workflows/ci.yml/badge.svg)](https://github.com/streamlinelabs/streamline-operator/actions/workflows/ci.yml)
+[![codecov](https://img.shields.io/codecov/c/github/streamlinelabs/streamline-operator?style=flat-square)](https://codecov.io/gh/streamlinelabs/streamline-operator)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.26+-326CE5.svg)](https://kubernetes.io/)
@@ -57,10 +58,19 @@ helm install streamline-operator streamline/streamline-operator \
 ### Install via Manifests
 
 ```bash
+# Install CRDs first
+kubectl apply -k deploy/crds/
+
+# Install RBAC and operator
 kubectl apply -f deploy/namespace.yaml
 kubectl apply -f deploy/rbac/
 kubectl apply -f deploy/operator.yaml
 ```
+
+> **Note:** The CRD YAMLs in `deploy/crds/` are hand-maintained to match the
+> Rust struct definitions in `src/crd/`. When modifying CRD fields, update both
+> the Rust structs and the corresponding YAML schema. A future release will
+> auto-generate CRDs from the `kube-derive` annotations at build time.
 
 ### Deploy a Streamline Cluster
 

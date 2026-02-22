@@ -1,0 +1,6 @@
+# Rustfmt configuration
+# See: https://rust-lang.github.io/rustfmt/
+
+max_width = 100
+use_field_init_shorthand = true
+imports_granularity = "Crate"
