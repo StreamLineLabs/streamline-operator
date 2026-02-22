@@ -1,0 +1,142 @@
+# StreamlineUser CRD
+# Install with: kubectl apply -f streamlineuser-crd.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamlineusers.streamline.io
+spec:
+  group: streamline.io
+  names:
+    kind: StreamlineUser
+    listKind: StreamlineUserList
+    plural: streamlineusers
+    singular: streamlineuser
+    shortNames:
+      - slu
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterRef
+        - name: Auth
+          type: string
+          jsonPath: .spec.authentication.type
+        - name: Ready
+          type: boolean
+          jsonPath: .status.ready
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - clusterRef
+                - authentication
+              properties:
+                clusterRef:
+                  type: string
+                authentication:
+                  type: object
+                  required:
+                    - type
+                  properties:
+                    type:
+                      type: string
+                      enum: ["scram-sha-256", "scram-sha-512", "plain", "tls-client-auth"]
+                    credentials:
+                      type: object
+                      properties:
+                        secretRef:
+                          type: string
+                        value:
+                          type: string
+                authorization:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: ["simple", "rbac"]
+                      default: "simple"
+                    acls:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - resourceType
+                          - resourceName
+                          - operations
+                          - permission
+                        properties:
+                          resourceType:
+                            type: string
+                            enum: ["topic", "group", "cluster", "transactional-id"]
+                          resourceName:
+                            type: string
+                          patternType:
+                            type: string
+                            enum: ["literal", "prefixed"]
+                            default: "literal"
+                          operations:
+                            type: array
+                            items:
+                              type: string
+                              enum: ["read", "write", "create", "delete", "alter", "describe", "describe-configs", "alter-configs", "idempotent-write", "all"]
+                          permission:
+                            type: string
+                            enum: ["allow", "deny"]
+                            default: "allow"
+                    roles:
+                      type: array
+                      items:
+                        type: string
+                quotas:
+                  type: object
+                  properties:
+                    producerByteRate:
+                      type: integer
+                    consumerByteRate:
+                      type: integer
+                    requestRate:
+                      type: integer
+                    connectionRate:
+                      type: integer
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                phase:
+                  type: string
+                username:
+                  type: string
+                credentialsSecret:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

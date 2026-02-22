@@ -1,0 +1,257 @@
+# StreamlineCluster CRD
+# Install with: kubectl apply -f streamlinecluster-crd.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamlineclusters.streamline.io
+spec:
+  group: streamline.io
+  names:
+    kind: StreamlineCluster
+    listKind: StreamlineClusterList
+    plural: streamlineclusters
+    singular: streamlinecluster
+    shortNames:
+      - slc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Ready
+          type: integer
+          jsonPath: .status.readyReplicas
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - replicas
+                - image
+                - storage
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 1
+                  default: 3
+                image:
+                  type: string
+                  default: "ghcr.io/streamlinelabs/streamline:latest"
+                imagePullPolicy:
+                  type: string
+                  enum: ["Always", "IfNotPresent", "Never"]
+                  default: "IfNotPresent"
+                resources:
+                  type: object
+                  properties:
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                storage:
+                  type: object
+                  required:
+                    - size
+                  properties:
+                    storageClassName:
+                      type: string
+                    size:
+                      type: string
+                      default: "10Gi"
+                    accessModes:
+                      type: array
+                      items:
+                        type: string
+                      default: ["ReadWriteOnce"]
+                tls:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    secretName:
+                      type: string
+                    mtlsEnabled:
+                      type: boolean
+                      default: false
+                    caSecretName:
+                      type: string
+                kafkaPort:
+                  type: integer
+                  default: 9092
+                httpPort:
+                  type: integer
+                  default: 9094
+                raftPort:
+                  type: integer
+                  default: 9095
+                env:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      value:
+                        type: string
+                nodeSelector:
+                  type: object
+                  additionalProperties:
+                    type: string
+                tolerations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                      operator:
+                        type: string
+                      value:
+                        type: string
+                      effect:
+                        type: string
+                podAntiAffinity:
+                  type: boolean
+                  default: true
+                rackAwareness:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    topologyKey:
+                      type: string
+                serviceAccountName:
+                  type: string
+                logLevel:
+                  type: string
+                  enum: ["trace", "debug", "info", "warn", "error"]
+                  default: "info"
+                metricsEnabled:
+                  type: boolean
+                  default: true
+                updateStrategy:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: ["RollingUpdate", "OnDelete"]
+                      default: "RollingUpdate"
+                    maxUnavailable:
+                      type: integer
+                      default: 1
+                autoscaling:
+                  type: object
+                  properties:
+                    minReplicas:
+                      type: integer
+                      minimum: 1
+                    maxReplicas:
+                      type: integer
+                    targetCpuUtilization:
+                      type: integer
+                    targetMemoryUtilization:
+                      type: integer
+                replication:
+                  type: object
+                  description: Cross-cluster geo-replication configuration
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    mode:
+                      type: string
+                      enum: ["active-passive", "active-active"]
+                      default: "active-passive"
+                      description: >
+                        active-passive: one-way replication from source to target.
+                        active-active: bidirectional CRDT-based replication with conflict resolution.
+                    remotes:
+                      type: array
+                      description: Remote clusters to replicate to/from
+                      items:
+                        type: object
+                        required:
+                          - name
+                          - bootstrapServers
+                        properties:
+                          name:
+                            type: string
+                            description: Unique name for the remote cluster
+                          bootstrapServers:
+                            type: string
+                            description: Comma-separated broker addresses of the remote cluster
+                          tlsSecretName:
+                            type: string
+                            description: Secret containing TLS certs for cross-cluster communication
+                    topicFilter:
+                      type: object
+                      description: Filter which topics to replicate
+                      properties:
+                        include:
+                          type: array
+                          items:
+                            type: string
+                          description: Topic name patterns to include (glob)
+                        exclude:
+                          type: array
+                          items:
+                            type: string
+                          description: Topic name patterns to exclude (glob)
+                    maxLagMs:
+                      type: integer
+                      default: 5000
+                      description: Maximum acceptable replication lag in milliseconds
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                readyReplicas:
+                  type: integer
+                leaderId:
+                  type: integer
+                brokerEndpoints:
+                  type: array
+                  items:
+                    type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

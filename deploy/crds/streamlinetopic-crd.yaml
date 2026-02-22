@@ -1,0 +1,140 @@
+# StreamlineTopic CRD
+# Install with: kubectl apply -f streamlinetopic-crd.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamlinetopics.streamline.io
+spec:
+  group: streamline.io
+  names:
+    kind: StreamlineTopic
+    listKind: StreamlineTopicList
+    plural: streamlinetopics
+    singular: streamlinetopic
+    shortNames:
+      - slt
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterRef
+        - name: Partitions
+          type: integer
+          jsonPath: .spec.partitions
+        - name: Replication
+          type: integer
+          jsonPath: .spec.replicationFactor
+        - name: Ready
+          type: boolean
+          jsonPath: .status.ready
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - clusterRef
+              properties:
+                clusterRef:
+                  type: string
+                partitions:
+                  type: integer
+                  minimum: 1
+                  default: 3
+                replicationFactor:
+                  type: integer
+                  minimum: 1
+                  default: 2
+                config:
+                  type: object
+                  properties:
+                    minInsyncReplicas:
+                      type: integer
+                      minimum: 1
+                      default: 1
+                    maxMessageBytes:
+                      type: integer
+                      default: 1048576
+                    segmentBytes:
+                      type: integer
+                    flushMessages:
+                      type: integer
+                    flushMs:
+                      type: integer
+                    custom:
+                      type: object
+                      additionalProperties:
+                        type: string
+                retention:
+                  type: object
+                  properties:
+                    retentionMs:
+                      type: integer
+                      default: 604800000
+                    retentionBytes:
+                      type: integer
+                      default: -1
+                    cleanupPolicy:
+                      type: string
+                      enum: ["delete", "compact", "delete,compact"]
+                      default: "delete"
+                compression:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum: ["producer", "none", "gzip", "snappy", "lz4", "zstd"]
+                      default: "producer"
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                phase:
+                  type: string
+                partitionAssignments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      partition:
+                        type: integer
+                      leader:
+                        type: integer
+                      replicas:
+                        type: array
+                        items:
+                          type: integer
+                      isr:
+                        type: array
+                        items:
+                          type: integer
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

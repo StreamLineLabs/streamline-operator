@@ -1,0 +1,9 @@
+# CRD Installation
+# Install with: kubectl apply -k deploy/crds/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - streamlinecluster-crd.yaml
+  - streamlinetopic-crd.yaml
+  - streamlineuser-crd.yaml
