@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+- chore: update kube-rs dependency (2026-02-22)
 - test: add unit tests for topic controller (2026-02-22)
 - refactor: extract reconciler into separate module (2026-02-22)
 - fix: handle CRD status update race condition (2026-02-22)
