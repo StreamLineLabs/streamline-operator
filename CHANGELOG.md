@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+- refactor: extract reconciler into separate module (2026-02-22)
 - fix: handle CRD status update race condition (2026-02-22)
 - refactor: simplify operator state machine transitions (2026-02-21)
 
