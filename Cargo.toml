@@ -40,7 +40,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # JSON patching for status updates
-json-patch = "2.0"
+json-patch = "4.1"
 
 # Schema generation
 schemars = "0.8"
