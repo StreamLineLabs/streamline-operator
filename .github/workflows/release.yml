@@ -61,7 +61,7 @@ jobs:
           ARCHIVE="streamline-operator-${TAG}-${{ matrix.target }}.tar.gz"
           tar czf "${ARCHIVE}" -C target/${{ matrix.target }}/release streamline-operator
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: binary-${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
@@ -108,7 +108,7 @@ jobs:
         run: |
           cargo run --bin streamline-operator -- --generate-crds > crds.yaml 2>/dev/null || \
           echo "CRD generation not yet implemented — skipping"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: hashFiles('crds.yaml') != ''
         with:
           name: crds
