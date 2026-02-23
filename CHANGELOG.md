@@ -1,16 +1,19 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-- chore: update kube-rs dependency (2026-02-22)
-- test: add unit tests for topic controller (2026-02-22)
-- refactor: extract reconciler into separate module (2026-02-22)
-- fix: handle CRD status update race condition (2026-02-22)
-- refactor: simplify operator state machine transitions (2026-02-21)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Fixed
+- Handle CRD status update race condition
+
+### Changed
+- Update kube-rs dependency
+- Extract reconciler into separate module
+- Simplify operator state machine transitions
 
 ## [0.2.0] - 2026-02-18
 
