@@ -8,6 +8,7 @@ use crate::conditions::{
     CLUSTER_CONDITION_PROGRESSING, CLUSTER_CONDITION_READY, CLUSTER_FINALIZER, CONDITION_FALSE,
     CONDITION_TRUE,
 };
+use crate::controllers::error_policy_backoff;
 use crate::crd::{ClusterPhase, ClusterStatus, ClusterStorage, StreamlineCluster};
 use crate::error::{OperatorError, Result};
 use chrono::Utc;
@@ -56,7 +57,7 @@ impl ClusterController {
                 |cluster, ctx| async move { ctx.reconcile(cluster).await },
                 |_cluster, error, _ctx| {
                     error!("Reconciliation error: {:?}", error);
-                    Action::requeue(Duration::from_secs(30))
+                    error_policy_backoff(_cluster, error, _ctx)
                 },
                 Arc::clone(&self),
             )

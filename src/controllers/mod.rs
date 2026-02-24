@@ -17,6 +17,29 @@ pub use topic::TopicController;
 pub use user::UserController;
 
 use crate::error::OperatorError;
+use kube::runtime::controller::Action;
+use std::time::Duration;
+
+/// Exponential backoff error policy for controller reconciliation failures.
+/// Categorizes errors by severity to choose appropriate retry delays.
+pub(crate) fn error_policy_backoff<K>(
+    _object: std::sync::Arc<K>,
+    error: &OperatorError,
+    _ctx: std::sync::Arc<impl std::any::Any + Send + Sync>,
+) -> Action {
+    let delay_secs = match error {
+        // Transient K8s API errors — retry quickly
+        OperatorError::KubeApi(_) | OperatorError::Http(_) => 10,
+        // Resource not yet available — moderate wait
+        OperatorError::NotFound(_) => 15,
+        // Reconciliation/state issues — longer wait
+        OperatorError::Reconciliation(_) | OperatorError::InvalidState(_) => 30,
+        // Config/serialization errors unlikely to self-heal — back off further
+        OperatorError::Configuration(_) | OperatorError::Serialization(_) => 60,
+    };
+
+    Action::requeue(Duration::from_secs(delay_secs))
+}
 
 /// Common trait for all controllers
 #[async_trait::async_trait]

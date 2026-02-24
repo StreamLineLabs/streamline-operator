@@ -7,6 +7,7 @@ use crate::conditions::{
     build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE, USER_CONDITION_CREDENTIALS_READY,
     USER_CONDITION_READY, USER_FINALIZER,
 };
+use crate::controllers::error_policy_backoff;
 use crate::crd::{StreamlineCluster, StreamlineUser, UserPhase, UserStatus};
 use crate::error::{OperatorError, Result};
 use chrono::Utc;
@@ -45,7 +46,7 @@ impl UserController {
                 |user, ctx| async move { ctx.reconcile(user).await },
                 |_user, error, _ctx| {
                     error!("Reconciliation error: {:?}", error);
-                    Action::requeue(Duration::from_secs(30))
+                    error_policy_backoff(_user, error, _ctx)
                 },
                 Arc::clone(&self),
             )

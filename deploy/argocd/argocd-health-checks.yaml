@@ -1,0 +1,117 @@
+# Argo CD Resource Health Checks for Streamline CRDs
+#
+# Add this to your Argo CD ConfigMap (argocd-cm) to enable health checks
+# for Streamline custom resources.
+#
+# Usage:
+#   kubectl apply -f argocd-health-checks.yaml
+#   # Or merge into your existing argocd-cm ConfigMap
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+data:
+  # Health checks for Streamline CRDs
+  resource.customizations.health.streamline.io_StreamlineCluster: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Running" then
+        hs.status = "Healthy"
+        hs.message = "Cluster is running"
+      elseif obj.status.phase == "Provisioning" or obj.status.phase == "Updating" then
+        hs.status = "Progressing"
+        hs.message = "Cluster is " .. obj.status.phase
+      elseif obj.status.phase == "Failed" or obj.status.phase == "Error" then
+        hs.status = "Degraded"
+        hs.message = obj.status.error or "Cluster is in failed state"
+      else
+        hs.status = "Unknown"
+        hs.message = "Phase: " .. (obj.status.phase or "unknown")
+      end
+    else
+      hs.status = "Progressing"
+      hs.message = "Waiting for status"
+    end
+    return hs
+
+  resource.customizations.health.streamline.io_StreamlineTopic: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Ready" then
+        hs.status = "Healthy"
+        hs.message = "Topic is ready"
+      elseif obj.status.phase == "Creating" or obj.status.phase == "Updating" then
+        hs.status = "Progressing"
+        hs.message = "Topic is " .. obj.status.phase
+      elseif obj.status.phase == "Failed" then
+        hs.status = "Degraded"
+        hs.message = obj.status.error or "Topic creation failed"
+      else
+        hs.status = "Unknown"
+      end
+    else
+      hs.status = "Progressing"
+      hs.message = "Waiting for reconciliation"
+    end
+    return hs
+
+  resource.customizations.health.streamline.io_StreamlineUser: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Active" then
+        hs.status = "Healthy"
+        hs.message = "User is active"
+      elseif obj.status.phase == "Creating" then
+        hs.status = "Progressing"
+        hs.message = "User is being created"
+      elseif obj.status.phase == "Failed" then
+        hs.status = "Degraded"
+        hs.message = obj.status.error or "User creation failed"
+      else
+        hs.status = "Unknown"
+      end
+    else
+      hs.status = "Progressing"
+      hs.message = "Waiting for reconciliation"
+    end
+    return hs
+
+  resource.customizations.health.streamline.io_StreamlineBackup: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Completed" then
+        hs.status = "Healthy"
+        hs.message = "Backup completed successfully"
+      elseif obj.status.phase == "Running" or obj.status.phase == "Pending" then
+        hs.status = "Progressing"
+        hs.message = "Backup is " .. obj.status.phase
+      elseif obj.status.phase == "Failed" then
+        hs.status = "Degraded"
+        hs.message = obj.status.error or "Backup failed"
+      elseif obj.status.phase == "Expired" then
+        hs.status = "Healthy"
+        hs.message = "Backup expired by retention policy"
+      else
+        hs.status = "Unknown"
+      end
+    else
+      hs.status = "Progressing"
+      hs.message = "Waiting for backup to start"
+    end
+    return hs
+
+  # Resource actions for Streamline CRDs
+  resource.customizations.actions.streamline.io_StreamlineCluster: |
+    discovery.lua: |
+      actions = {}
+      actions["restart"] = {["disabled"] = false}
+      return actions
+    definitions:
+    - name: restart
+      action.lua: |
+        obj.spec.restartAt = os.date("!%Y-%m-%dT%H:%M:%SZ")
+        return obj

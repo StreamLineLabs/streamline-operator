@@ -7,6 +7,7 @@ use crate::conditions::{
     build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE, TOPIC_CONDITION_READY,
     TOPIC_CONDITION_SYNCED, TOPIC_FINALIZER,
 };
+use crate::controllers::error_policy_backoff;
 use crate::crd::{StreamlineCluster, StreamlineTopic, TopicPhase, TopicStatus};
 use crate::error::{OperatorError, Result};
 use chrono::Utc;
@@ -42,7 +43,7 @@ impl TopicController {
                 |topic, ctx| async move { ctx.reconcile(topic).await },
                 |_topic, error, _ctx| {
                     error!("Reconciliation error: {:?}", error);
-                    Action::requeue(Duration::from_secs(30))
+                    error_policy_backoff(_topic, error, _ctx)
                 },
                 Arc::clone(&self),
             )

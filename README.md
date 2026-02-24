@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.26+-326CE5.svg)](https://kubernetes.io/)
-[![Docs](https://img.shields.io/badge/docs-streamlinelabs.dev-brightgreen)](https://josedab.github.io/streamline/docs/operations/kubernetes)
+[![Docs](https://img.shields.io/badge/docs-streamlinelabs.dev-brightgreen)](https://streamlinelabs.dev/docs/operations/kubernetes)
 
 Kubernetes operator for managing [Streamline](https://github.com/streamlinelabs/streamline) clusters, topics, and users using Custom Resource Definitions (CRDs).
 
