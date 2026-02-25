@@ -50,3 +50,4 @@ pub trait Controller: Send + Sync {
     /// Get the controller name for logging
     fn name(&self) -> &'static str;
 }
+// extract common reconciler logic into trait
