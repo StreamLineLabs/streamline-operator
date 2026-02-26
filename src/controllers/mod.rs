@@ -5,6 +5,8 @@
 
 mod autoscaling;
 mod cluster;
+pub mod operator_hub;
+mod scale_to_zero;
 mod topic;
 mod user;
 
@@ -13,6 +15,14 @@ pub use autoscaling::{
     ScalingBehavior, ScalingPolicy, ScalingRecommendation, ScalingRules,
 };
 pub use cluster::ClusterController;
+pub use operator_hub::{
+    HubConfig, HubOperator, HubStats, InstallStatus, InstalledOperator, IntegrationType,
+    OperatorCategory, OperatorHub, BUNDLED_OPERATORS,
+};
+pub use scale_to_zero::{
+    build_activity_snapshot, ClusterActivitySnapshot, KedaConfig, KedaTrigger, ScaleAction,
+    ScaleToZeroAction, ScaleToZeroConfig, ScaleToZeroController,
+};
 pub use topic::TopicController;
 pub use user::UserController;
 
