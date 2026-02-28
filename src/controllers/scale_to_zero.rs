@@ -621,9 +621,6 @@ mod tests {
 
     #[test]
     fn test_evaluate_disabled() {
-        let controller = ScaleToZeroController {
-            client: kube::Client::try_default().err().map(|_| ()).unwrap_or(()),
-        };
         // We cannot construct a real Client in unit tests, so test the pure logic via a helper.
         let config = default_config(); // enabled = false
         let snapshot = ClusterActivitySnapshot {
