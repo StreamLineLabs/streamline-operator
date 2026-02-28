@@ -43,7 +43,7 @@ chrono = { version = "0.4", features = ["serde"] }
 json-patch = "2.0"
 
 # Schema generation
-schemars = "0.8"
+schemars = "1.2"
 
 # Async traits
 async-trait = "0.1"
