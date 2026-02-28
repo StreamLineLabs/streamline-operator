@@ -265,3 +265,4 @@ mod tests {
         assert_eq!(phase, TopicPhase::Pending);
     }
 }
+
