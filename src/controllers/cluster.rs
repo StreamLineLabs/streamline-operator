@@ -57,6 +57,7 @@ impl ClusterController {
                 |cluster, ctx| async move { ctx.reconcile(cluster).await },
                 |_cluster, error, _ctx| {
                     error!("Reconciliation error: {:?}", error);
+                    crate::metrics::get().inc_error("cluster");
                     error_policy_backoff(_cluster, error, _ctx)
                 },
                 Arc::clone(&self),
@@ -81,6 +82,8 @@ impl ClusterController {
         &self,
         cluster: Arc<StreamlineCluster>,
     ) -> std::result::Result<Action, OperatorError> {
+        crate::metrics::get().inc_reconcile("cluster");
+        let _timer = crate::metrics::get().start_timer();
         let name = cluster.name_any();
         let namespace = cluster.namespace().unwrap_or_else(|| "default".to_string());
 
@@ -107,9 +110,33 @@ impl ClusterController {
         // Create/update StatefulSet
         self.reconcile_statefulset(&cluster, &namespace).await?;
 
+        // Create/update HPA if autoscaling is enabled
+        if let Some(ref autoscaling_spec) = cluster.spec.autoscaling {
+            if autoscaling_spec.enabled {
+                let autoscaling_config = crate::controllers::autoscaling::AutoScalingConfig {
+                    enabled: true,
+                    min_replicas: autoscaling_spec.min_replicas,
+                    max_replicas: autoscaling_spec.max_replicas,
+                    target_cpu_utilization: autoscaling_spec.target_cpu_utilization,
+                    target_memory_utilization: autoscaling_spec.target_memory_utilization,
+                    partition_aware: autoscaling_spec.partition_aware,
+                    target_lag_per_partition: autoscaling_spec.target_lag_per_partition,
+                    target_messages_per_second: autoscaling_spec.target_messages_per_second,
+                    ..Default::default()
+                };
+                let autoscaler =
+                    crate::controllers::autoscaling::AutoScalingController::new(self.client.clone());
+                autoscaler
+                    .reconcile_hpa(&cluster, &namespace, &autoscaling_config)
+                    .await?;
+                info!("HPA reconciled for cluster {}/{}", namespace, name);
+            }
+        }
+
         // Update status
         self.update_status(&cluster, &namespace).await?;
 
+        crate::metrics::get().inc_success();
         Ok(Action::requeue(Duration::from_secs(60)))
     }
 

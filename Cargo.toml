@@ -51,6 +51,12 @@ async-trait = "0.1"
 # Random password generation
 rand = "0.8"
 
+# Health probe HTTP server
+axum = "0.7"
+
+# HTTP client for Streamline API calls
+reqwest = { version = "0.12", features = ["json"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 

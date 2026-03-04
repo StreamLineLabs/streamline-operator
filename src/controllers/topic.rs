@@ -23,12 +23,13 @@ use tracing::{error, info, warn};
 /// Context for the topic controller
 pub struct TopicController {
     client: Client,
+    http_client: reqwest::Client,
 }
 
 impl TopicController {
     /// Create a new topic controller
-    pub fn new(client: Client) -> Self {
-        Self { client }
+    pub fn new(client: Client, http_client: reqwest::Client) -> Self {
+        Self { client, http_client }
     }
 
     /// Run the topic controller
@@ -43,6 +44,7 @@ impl TopicController {
                 |topic, ctx| async move { ctx.reconcile(topic).await },
                 |_topic, error, _ctx| {
                     error!("Reconciliation error: {:?}", error);
+                    crate::metrics::get().inc_error("topic");
                     error_policy_backoff(_topic, error, _ctx)
                 },
                 Arc::clone(&self),
@@ -67,6 +69,8 @@ impl TopicController {
         &self,
         topic: Arc<StreamlineTopic>,
     ) -> std::result::Result<Action, OperatorError> {
+        crate::metrics::get().inc_reconcile("topic");
+        let _timer = crate::metrics::get().start_timer();
         let name = topic.name_any();
         let namespace = topic.namespace().unwrap_or_else(|| "default".to_string());
 
@@ -128,6 +132,7 @@ impl TopicController {
             }
         }
 
+        crate::metrics::get().inc_success();
         Ok(Action::requeue(Duration::from_secs(60)))
     }
 
@@ -178,10 +183,16 @@ impl TopicController {
                 cluster_name, cluster_name, namespace, cluster.spec.http_port
             );
             info!(
-                "Would delete topic {} from cluster at {}",
+                "Deleting topic {} from cluster at {}",
                 name, http_endpoint
             );
-            // TODO: Implement actual HTTP DELETE call to Streamline API
+            if let Err(e) = self.http_client
+                .delete(format!("{}/api/v1/topics/{}", http_endpoint, name))
+                .send()
+                .await
+            {
+                warn!("Failed to delete topic from cluster API: {}", e);
+            }
         } else {
             warn!(
                 "Cluster {} not found during topic deletion, skipping server cleanup",
@@ -251,23 +262,38 @@ impl TopicController {
             }
         });
 
-        // In a real implementation, we would make an HTTP request to the Streamline API
-        // For now, we'll log the intended action
         info!(
-            "Would create/update topic {} at {} with config: {:?}",
+            "Creating/updating topic {} at {}",
             topic.name_any(),
             http_endpoint,
-            topic_config
         );
 
-        // TODO: Implement actual HTTP client call to Streamline API
-        // This would require adding reqwest or similar HTTP client dependency
-        // let client = reqwest::Client::new();
-        // let response = client
-        //     .post(format!("{}/api/v1/topics", http_endpoint))
-        //     .json(&topic_config)
-        //     .send()
-        //     .await?;
+        let response = self.http_client
+            .post(format!("{}/api/v1/topics", http_endpoint))
+            .json(&topic_config)
+            .send()
+            .await
+            .map_err(|e| {
+                OperatorError::Internal(format!(
+                    "HTTP request to create topic {} failed: {}",
+                    topic.name_any(),
+                    e
+                ))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            // 409 Conflict means topic already exists — treat as success for idempotency
+            if status.as_u16() != 409 {
+                return Err(OperatorError::Internal(format!(
+                    "Failed to create topic {} (HTTP {}): {}",
+                    topic.name_any(),
+                    status,
+                    body
+                )).into());
+            }
+        }
 
         Ok(())
     }
