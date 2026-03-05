@@ -26,6 +26,7 @@ pub mod controllers;
 pub mod crd;
 pub mod error;
 pub mod leader_election;
+pub mod metrics;
 
 pub use controllers::{ClusterController, TopicController, UserController};
 pub use crd::{

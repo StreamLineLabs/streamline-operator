@@ -26,12 +26,13 @@ use tracing::{error, info, warn};
 /// Context for the user controller
 pub struct UserController {
     client: Client,
+    http_client: reqwest::Client,
 }
 
 impl UserController {
     /// Create a new user controller
-    pub fn new(client: Client) -> Self {
-        Self { client }
+    pub fn new(client: Client, http_client: reqwest::Client) -> Self {
+        Self { client, http_client }
     }
 
     /// Run the user controller
@@ -46,6 +47,7 @@ impl UserController {
                 |user, ctx| async move { ctx.reconcile(user).await },
                 |_user, error, _ctx| {
                     error!("Reconciliation error: {:?}", error);
+                    crate::metrics::get().inc_error("user");
                     error_policy_backoff(_user, error, _ctx)
                 },
                 Arc::clone(&self),
@@ -70,6 +72,8 @@ impl UserController {
         &self,
         user: Arc<StreamlineUser>,
     ) -> std::result::Result<Action, OperatorError> {
+        crate::metrics::get().inc_reconcile("user");
+        let _timer = crate::metrics::get().start_timer();
         let name = user.name_any();
         let namespace = user.namespace().unwrap_or_else(|| "default".to_string());
 
@@ -138,6 +142,7 @@ impl UserController {
             }
         }
 
+        crate::metrics::get().inc_success();
         Ok(Action::requeue(Duration::from_secs(60)))
     }
 
@@ -188,10 +193,16 @@ impl UserController {
                 cluster_name, cluster_name, namespace, cluster.spec.http_port
             );
             info!(
-                "Would revoke credentials for user {} from cluster at {}",
+                "Revoking credentials for user {} from cluster at {}",
                 name, http_endpoint
             );
-            // TODO: Implement actual HTTP DELETE call to Streamline API
+            if let Err(e) = self.http_client
+                .delete(format!("{}/api/v1/users/{}", http_endpoint, name))
+                .send()
+                .await
+            {
+                warn!("Failed to revoke user from cluster API: {}", e);
+            }
         } else {
             warn!(
                 "Cluster {} not found during user deletion, skipping credential revocation",
@@ -374,15 +385,37 @@ impl UserController {
             "quotas": user.spec.quotas,
         });
 
-        // In a real implementation, we would make an HTTP request to the Streamline API
         info!(
-            "Would create/update user {} at {} with config: {:?}",
+            "Creating/updating user {} at {}",
             user.name_any(),
             http_endpoint,
-            user_config
         );
 
-        // TODO: Implement actual HTTP client call to Streamline API
+        let response = self.http_client
+            .post(format!("{}/api/v1/users", http_endpoint))
+            .json(&user_config)
+            .send()
+            .await
+            .map_err(|e| {
+                OperatorError::Internal(format!(
+                    "HTTP request to create user {} failed: {}",
+                    user.name_any(),
+                    e
+                ))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            if status.as_u16() != 409 {
+                return Err(OperatorError::Internal(format!(
+                    "Failed to create user {} (HTTP {}): {}",
+                    user.name_any(),
+                    status,
+                    body
+                )).into());
+            }
+        }
 
         Ok(())
     }
