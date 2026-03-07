@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 #[kube(
     group = "streamline.io",
     version = "v1alpha1",
+
     kind = "StreamlineTopic",
     namespaced,
     status = "TopicStatus",
