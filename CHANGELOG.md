@@ -1,20 +1,17 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-- test: add envtest suite for topic reconciler
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-- test: add envtest for cluster rolling upgrade (2026-03-05)
-
-- refactor: extract CRD validation into shared module (2026-03-06)
-
-- fix: resolve reconciliation loop on status update (2026-03-06)
 ## [Unreleased]
 
-## [0.2.0] - 2026-02-28
+- test: add envtest suite for topic reconciler
+- test: add envtest for cluster rolling upgrade (2026-03-05)
+- refactor: extract CRD validation into shared module (2026-03-06)
+- fix: resolve reconciliation loop on status update (2026-03-06)
 - **Changed**: update kube-rs to latest version
 - **Changed**: extract status update logic into trait
 - **Fixed**: resolve pod restart loop on config change
@@ -33,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extract reconciler into separate module
 - Simplify operator state machine transitions
 
+
 ## [0.2.0] - 2026-02-18
 
 ### Added
@@ -42,4 +40,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full reconciliation pipeline with status reporting
 - Rust-based operator using kube-rs framework
 - CI pipeline with formatting, linting, and tests
-
