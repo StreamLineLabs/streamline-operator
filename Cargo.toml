@@ -1,3 +1,4 @@
+# v0.3.0: Updated build configuration
 [package]
 name = "streamline-operator"
 version = "0.2.0"
