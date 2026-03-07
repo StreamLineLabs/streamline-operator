@@ -1,0 +1,16 @@
+Streamline Kubernetes Operator
+Copyright 2024-2025 Jose David Baena
+
+This product includes software developed at:
+https://github.com/streamlinelabs/streamline-operator
+
+Licensed under the Apache License, Version 2.0.
+
+================================================================================
+
+This product includes or depends on third-party software:
+
+kube-rs (Apache-2.0), tokio (MIT)
+
+For a complete list of dependencies and their licenses, see the project's
+dependency manifest file.
