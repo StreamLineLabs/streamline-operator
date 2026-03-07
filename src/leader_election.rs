@@ -1,4 +1,5 @@
 //! Kubernetes Lease-based leader election for HA operator deployments.
+
 //!
 //! When multiple operator replicas run simultaneously, only the leader
 //! (the holder of the Lease) runs the reconciliation controllers. Other
