@@ -1,22 +1,38 @@
+# Dependabot configuration — StreamlineLabs
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
 version: 2
+
 updates:
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      rust-dependencies:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    commit-message:
-      prefix: "deps"
-    open-pull-requests-limit: 5
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
     groups:
       github-actions:
         patterns: ["*"]
+    labels:
+      - "dependencies"
     commit-message:
-      prefix: "ci"
+      prefix: "chore(deps):"
+    open-pull-requests-limit: 5
+
+  # cargo dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      rust-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      rust-major:
+        patterns: ["*"]
+        update-types: ["major"]
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps):"
+    open-pull-requests-limit: 10

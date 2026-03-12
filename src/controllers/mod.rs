@@ -46,6 +46,8 @@ pub(crate) fn error_policy_backoff<K>(
         OperatorError::Reconciliation(_) | OperatorError::InvalidState(_) => 30,
         // Config/serialization errors unlikely to self-heal — back off further
         OperatorError::Configuration(_) | OperatorError::Serialization(_) => 60,
+        // Internal errors — back off further
+        OperatorError::Internal(_) => 60,
     };
 
     Action::requeue(Duration::from_secs(delay_secs))
