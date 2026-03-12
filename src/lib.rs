@@ -30,9 +30,10 @@ pub mod metrics;
 
 pub use controllers::{ClusterController, TopicController, UserController};
 pub use crd::{
+    BackupCondition, BackupPhase, BackupSpec, BackupStatus, BackupStorage, BackupType,
     ClusterCondition, ClusterPhase, ClusterSpec, ClusterStatus, ClusterStorage, ClusterTls,
-    ResourceRequirements, StreamlineCluster, StreamlineTopic, StreamlineUser, TopicSpec,
-    TopicStatus, UserCredentials, UserPermission, UserSpec, UserStatus,
+    ResourceRequirements, StreamlineBackup, StreamlineCluster, StreamlineTopic, StreamlineUser,
+    TopicSpec, TopicStatus, UserCredentials, UserPermission, UserSpec, UserStatus,
 };
 pub use error::{OperatorError, Result};
 

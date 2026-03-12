@@ -489,6 +489,84 @@ fn default_mps_threshold() -> i64 {
     100000
 }
 
+impl ClusterSpec {
+    /// Validate the cluster specification, returning errors for invalid values.
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+
+        if self.replicas < 1 {
+            errors.push(format!(
+                "replicas must be >= 1, got {}",
+                self.replicas
+            ));
+        }
+        if self.replicas > 1 && self.replicas % 2 == 0 {
+            // Even replicas break Raft quorum — warn but allow
+            tracing::warn!(
+                "replicas={} is even; odd numbers recommended for Raft quorum",
+                self.replicas
+            );
+        }
+
+        if self.kafka_port < 1 || self.kafka_port > 65535 {
+            errors.push(format!(
+                "kafkaPort must be 1-65535, got {}",
+                self.kafka_port
+            ));
+        }
+        if self.http_port < 1 || self.http_port > 65535 {
+            errors.push(format!(
+                "httpPort must be 1-65535, got {}",
+                self.http_port
+            ));
+        }
+        if self.raft_port < 1 || self.raft_port > 65535 {
+            errors.push(format!(
+                "raftPort must be 1-65535, got {}",
+                self.raft_port
+            ));
+        }
+
+        if self.kafka_port == self.http_port
+            || self.kafka_port == self.raft_port
+            || self.http_port == self.raft_port
+        {
+            errors.push("kafkaPort, httpPort, and raftPort must all be different".to_string());
+        }
+
+        if let Some(ref autoscaling) = self.autoscaling {
+            if autoscaling.enabled {
+                if autoscaling.min_replicas < 1 {
+                    errors.push(format!(
+                        "autoscaling.minReplicas must be >= 1, got {}",
+                        autoscaling.min_replicas
+                    ));
+                }
+                if autoscaling.max_replicas < autoscaling.min_replicas {
+                    errors.push(format!(
+                        "autoscaling.maxReplicas ({}) must be >= minReplicas ({})",
+                        autoscaling.max_replicas, autoscaling.min_replicas
+                    ));
+                }
+                if autoscaling.target_cpu_utilization < 1
+                    || autoscaling.target_cpu_utilization > 100
+                {
+                    errors.push(format!(
+                        "autoscaling.targetCpuUtilization must be 1-100, got {}",
+                        autoscaling.target_cpu_utilization
+                    ));
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,6 +578,38 @@ mod tests {
         assert_eq!(spec.kafka_port, 9092);
         assert_eq!(spec.http_port, 9094);
         assert!(spec.metrics_enabled);
+    }
+
+    #[test]
+    fn test_cluster_spec_validate_defaults_pass() {
+        let spec: ClusterSpec = serde_json::from_str("{}").unwrap();
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cluster_spec_validate_negative_replicas() {
+        let spec: ClusterSpec =
+            serde_json::from_str(r#"{"replicas": -1}"#).unwrap();
+        let result = spec.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err()[0].contains("replicas must be >= 1"));
+    }
+
+    #[test]
+    fn test_cluster_spec_validate_duplicate_ports() {
+        let spec: ClusterSpec =
+            serde_json::from_str(r#"{"kafkaPort": 9092, "httpPort": 9092}"#).unwrap();
+        let result = spec.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err()[0].contains("must all be different"));
+    }
+
+    #[test]
+    fn test_cluster_spec_validate_invalid_port() {
+        let spec: ClusterSpec =
+            serde_json::from_str(r#"{"kafkaPort": 99999}"#).unwrap();
+        let result = spec.validate();
+        assert!(result.is_err());
     }
 
     #[test]

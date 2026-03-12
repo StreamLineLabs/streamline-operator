@@ -22,6 +22,8 @@ pub enum OperatorError {
     NotFound(String),
     /// Invalid resource state
     InvalidState(String),
+    /// Internal/unexpected error
+    Internal(String),
 }
 
 impl fmt::Display for OperatorError {
@@ -34,6 +36,7 @@ impl fmt::Display for OperatorError {
             OperatorError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
             OperatorError::NotFound(msg) => write!(f, "Resource not found: {}", msg),
             OperatorError::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
+            OperatorError::Internal(msg) => write!(f, "Internal error: {}", msg),
         }
     }
 }
@@ -72,6 +75,7 @@ mod tests {
             OperatorError::Serialization("serde".to_string()),
             OperatorError::NotFound("resource".to_string()),
             OperatorError::InvalidState("state".to_string()),
+            OperatorError::Internal("internal".to_string()),
         ];
 
         for err in errors {

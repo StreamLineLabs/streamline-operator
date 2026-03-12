@@ -4,11 +4,17 @@
 //! - StreamlineCluster: A Streamline cluster deployment
 //! - StreamlineTopic: A topic within a cluster
 //! - StreamlineUser: A user with authentication credentials
+//! - StreamlineBackup: A backup schedule and retention policy
 
+mod backup;
 mod cluster;
 mod topic;
 mod user;
 
+pub use backup::{
+    BackupCondition, BackupPhase, BackupSpec, BackupStatus, BackupStorage, BackupStorageType,
+    BackupType, StreamlineBackup,
+};
 pub use cluster::{
     AutoScalingSpec, ClusterCondition, ClusterPhase, ClusterSpec, ClusterStatus, ClusterStorage,
     ClusterTls, ResourceRequirements, ScalingBehaviorSpec, ScalingPolicySpec, ScalingRulesSpec,
