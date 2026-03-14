@@ -1,0 +1,21 @@
+# Docker Compose for operator integration testing
+#
+# Starts a Streamline server and a kind-compatible Kubernetes API.
+# The operator can be tested against these services locally.
+#
+# Usage: docker compose -f docker-compose.test.yml up -d
+version: "3.8"
+services:
+  streamline:
+    image: ghcr.io/streamlinelabs/streamline:0.2.0
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      - STREAMLINE_LOG_LEVEL=info
+      - STREAMLINE_PLAYGROUND=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9094/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
