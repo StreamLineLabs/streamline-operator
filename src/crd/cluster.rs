@@ -246,6 +246,9 @@ pub struct ClusterTls {
     /// Secret containing CA certificate for mTLS
     #[serde(default)]
     pub ca_secret_name: Option<String>,
+    /// Skip TLS certificate verification (development only, NOT recommended for production)
+    #[serde(default)]
+    pub insecure_skip_verify: bool,
 }
 
 /// Environment variable

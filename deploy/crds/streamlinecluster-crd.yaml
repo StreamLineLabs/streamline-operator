@@ -100,6 +100,10 @@ spec:
                       default: false
                     caSecretName:
                       type: string
+                    insecureSkipVerify:
+                      type: boolean
+                      default: false
+                      description: "Skip TLS certificate verification (development only, NOT recommended for production)"
                 kafkaPort:
                   type: integer
                   default: 9092
