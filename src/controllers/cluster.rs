@@ -261,8 +261,10 @@ tls:
   cert_file: /etc/streamline/tls/tls.crt
   key_file: /etc/streamline/tls/tls.key
   mtls_enabled: {}
+  insecure_skip_verify: {}
 "#,
-                    tls.mtls_enabled
+                    tls.mtls_enabled,
+                    tls.insecure_skip_verify
                 ));
             }
         }
