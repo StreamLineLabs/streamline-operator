@@ -40,3 +40,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full reconciliation pipeline with status reporting
 - Rust-based operator using kube-rs framework
 - CI pipeline with formatting, linting, and tests
+- fix: handle missing CRD annotations in reconcile loop
