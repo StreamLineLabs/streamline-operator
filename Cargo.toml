@@ -18,7 +18,7 @@ kube = { version = "0.95", features = ["runtime", "derive", "client", "ws"] }
 k8s-openapi = { version = "0.23", features = ["v1_30"] }
 
 # Async runtime
-tokio = { version = "1.41", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 futures = "0.3"
 
 # Serialization
@@ -35,7 +35,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # CLI parsing
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 
 # Time utilities
 chrono = { version = "0.4", features = ["serde"] }
