@@ -44,3 +44,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs: document topic reconciliation state machine flow
 - chore: bump kube-rs dependency to 0.89
 - feat: implement horizontal autoscaling for StreamlineCluster
+- chore: update CRD schema and generated documentation
