@@ -7,3 +7,5 @@ resources:
   - streamlinecluster-crd.yaml
   - streamlinetopic-crd.yaml
   - streamlineuser-crd.yaml
+  - streamlinebranch-crd.yaml
+  - streamlinecontract-crd.yaml
