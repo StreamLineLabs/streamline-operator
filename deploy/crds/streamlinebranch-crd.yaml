@@ -1,0 +1,90 @@
+# StreamlineBranch CRD (Moonshot M5: time-travel branches)
+# Install with: kubectl apply -f streamlinebranch-crd.yaml
+#
+# Note: this CRD currently has no live controller — it is a declarative
+# scaffold intended for GitOps flows. A reconciler that talks to the
+# Moonshot HTTP control plane will land in a follow-up.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamlinebranches.streamline.io
+spec:
+  group: streamline.io
+  names:
+    kind: StreamlineBranch
+    listKind: StreamlineBranchList
+    plural: streamlinebranches
+    singular: streamlinebranch
+    shortNames:
+      - slb
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterRef
+        - name: Parent
+          type: string
+          jsonPath: .spec.parent
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - clusterRef
+              properties:
+                clusterRef:
+                  type: string
+                  description: Reference to the parent StreamlineCluster
+                parent:
+                  type: string
+                  description: Parent branch (defaults to the cluster's main branch)
+                description:
+                  type: string
+                retention:
+                  type: object
+                  properties:
+                    ttlSeconds:
+                      type: integer
+                      format: int64
+                      default: 0
+                      description: TTL in seconds (0 = keep forever)
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Pending, Creating, Ready, Failed, Deleting]
+                ready:
+                  type: boolean
+                createdAtMs:
+                  type: integer
+                  format: int64
+                message:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required: [type, status]
+                    properties:
+                      type: { type: string }
+                      status: { type: string }
+                      lastTransitionTime: { type: string }
+                      reason: { type: string }
+                      message: { type: string }

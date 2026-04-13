@@ -1,0 +1,87 @@
+# StreamlineContract CRD (Moonshot M4: enforced data contracts)
+# Install with: kubectl apply -f streamlinecontract-crd.yaml
+#
+# Note: this CRD currently has no live controller — it is a declarative
+# scaffold intended for GitOps flows. A reconciler that talks to the
+# Moonshot HTTP control plane will land in a follow-up.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: streamlinecontracts.streamline.io
+spec:
+  group: streamline.io
+  names:
+    kind: StreamlineContract
+    listKind: StreamlineContractList
+    plural: streamlinecontracts
+    singular: streamlinecontract
+    shortNames:
+      - slc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterRef
+        - name: Compatibility
+          type: string
+          jsonPath: .spec.compatibility
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - clusterRef
+                - schemaJson
+              properties:
+                clusterRef:
+                  type: string
+                schemaJson:
+                  type: string
+                  description: JSON-encoded contract schema body
+                compatibility:
+                  type: string
+                  enum: [BACKWARD, FORWARD, FULL, NONE]
+                  default: BACKWARD
+                bindTopics:
+                  type: array
+                  items: { type: string }
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Pending, Registering, Active, Failed, Deleting]
+                registered:
+                  type: boolean
+                boundTopics:
+                  type: array
+                  items: { type: string }
+                message:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required: [type, status]
+                    properties:
+                      type: { type: string }
+                      status: { type: string }
+                      lastTransitionTime: { type: string }
+                      reason: { type: string }
+                      message: { type: string }
