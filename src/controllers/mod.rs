@@ -4,7 +4,10 @@
 //! with the desired state specified in the custom resources.
 
 mod autoscaling;
+pub mod branch;
 mod cluster;
+pub mod contract;
+pub mod memory;
 pub mod operator_hub;
 mod scale_to_zero;
 mod topic;
@@ -14,7 +17,10 @@ pub use autoscaling::{
     AutoScalingConfig, AutoScalingController, CustomMetric, MetricTargetSpec, PartitionMetrics,
     ScalingBehavior, ScalingPolicy, ScalingRecommendation, ScalingRules,
 };
+pub use branch::BranchController;
 pub use cluster::ClusterController;
+pub use contract::ContractController;
+pub use memory::MemoryController;
 pub use operator_hub::{
     HubConfig, HubOperator, HubStats, InstallStatus, InstalledOperator, IntegrationType,
     OperatorCategory, OperatorHub, BUNDLED_OPERATORS,
