@@ -28,11 +28,17 @@ pub mod error;
 pub mod leader_election;
 pub mod metrics;
 
-pub use controllers::{ClusterController, TopicController, UserController};
+pub use controllers::{
+    BranchController, ClusterController, ContractController, MemoryController, TopicController,
+    UserController,
+};
 pub use crd::{
     BackupCondition, BackupPhase, BackupSpec, BackupStatus, BackupStorage, BackupType,
-    ClusterCondition, ClusterPhase, ClusterSpec, ClusterStatus, ClusterStorage, ClusterTls,
-    ResourceRequirements, StreamlineBackup, StreamlineCluster, StreamlineTopic, StreamlineUser,
+    BranchPhase, BranchSpec, BranchStatus, ClusterCondition, ClusterPhase, ClusterSpec,
+    ClusterStatus, ClusterStorage, ClusterTls, ContractCompatibility, ContractPhase,
+    ContractSpec, ContractStatus, MemoryCondition, MemoryDecay, MemoryPhase, MemorySpec,
+    MemoryStatus, MemoryTiers, ResourceRequirements, StreamlineBackup, StreamlineBranch,
+    StreamlineCluster, StreamlineContract, StreamlineMemory, StreamlineTopic, StreamlineUser,
     TopicSpec, TopicStatus, UserCredentials, UserPermission, UserSpec, UserStatus,
 };
 pub use error::{OperatorError, Result};

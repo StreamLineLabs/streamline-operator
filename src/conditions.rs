@@ -28,6 +28,9 @@ pub const USER_CONDITION_CREDENTIALS_READY: &str = "CredentialsReady";
 pub const CLUSTER_FINALIZER: &str = "streamline.io/cluster-cleanup";
 pub const TOPIC_FINALIZER: &str = "streamline.io/topic-cleanup";
 pub const USER_FINALIZER: &str = "streamline.io/user-cleanup";
+pub const CONTRACT_FINALIZER: &str = "streamline.io/contract-cleanup";
+pub const BRANCH_FINALIZER: &str = "streamline.io/branch-cleanup";
+pub const MEMORY_FINALIZER: &str = "streamline.io/memory-cleanup";
 
 /// Build a condition with the current timestamp.
 pub fn build_condition(

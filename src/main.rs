@@ -16,7 +16,10 @@ use clap::Parser;
 use kube::Client;
 use std::sync::Arc;
 use streamline_operator::leader_election::{self, LeaderElector};
-use streamline_operator::{ClusterController, TopicController, UserController};
+use streamline_operator::{
+    BranchController, ClusterController, ContractController, MemoryController, TopicController,
+    UserController,
+};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -92,7 +95,10 @@ async fn main() -> anyhow::Result<()> {
     // Create controllers
     let cluster_controller = Arc::new(ClusterController::new(client.clone()));
     let topic_controller = Arc::new(TopicController::new(client.clone(), http_client.clone()));
-    let user_controller = Arc::new(UserController::new(client.clone(), http_client));
+    let user_controller = Arc::new(UserController::new(client.clone(), http_client.clone()));
+    let contract_controller = Arc::new(ContractController::new(client.clone(), http_client.clone()));
+    let branch_controller = Arc::new(BranchController::new(client.clone(), http_client.clone()));
+    let memory_controller = Arc::new(MemoryController::new(client.clone(), http_client));
 
     // Run controllers concurrently
     let cluster_handle = {
@@ -118,6 +124,33 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             if let Err(e) = controller.run().await {
                 error!("User controller error: {}", e);
+            }
+        })
+    };
+
+    let contract_handle = {
+        let controller = Arc::clone(&contract_controller);
+        tokio::spawn(async move {
+            if let Err(e) = controller.run().await {
+                error!("Contract controller error: {}", e);
+            }
+        })
+    };
+
+    let branch_handle = {
+        let controller = Arc::clone(&branch_controller);
+        tokio::spawn(async move {
+            if let Err(e) = controller.run().await {
+                error!("Branch controller error: {}", e);
+            }
+        })
+    };
+
+    let memory_handle = {
+        let controller = Arc::clone(&memory_controller);
+        tokio::spawn(async move {
+            if let Err(e) = controller.run().await {
+                error!("Memory controller error: {}", e);
             }
         })
     };
@@ -203,6 +236,21 @@ async fn main() -> anyhow::Result<()> {
         result = user_handle => {
             if let Err(e) = result {
                 error!("User controller task failed: {}", e);
+            }
+        }
+        result = contract_handle => {
+            if let Err(e) = result {
+                error!("Contract controller task failed: {}", e);
+            }
+        }
+        result = branch_handle => {
+            if let Err(e) = result {
+                error!("Branch controller task failed: {}", e);
+            }
+        }
+        result = memory_handle => {
+            if let Err(e) = result {
+                error!("Memory controller task failed: {}", e);
             }
         }
         _ = renew_handle => {

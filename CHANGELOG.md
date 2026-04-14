@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Moonshot scaffolds)
+- **`StreamlineBranch` CRD** (`streamline.io/v1alpha1`, kind `StreamlineBranch`, short name `slb`):
+  declarative time-travel branches (Moonshot M5). Spec: `clusterRef`, `parent`,
+  `description`, `retention.ttlSeconds`. Status: `phase` (Pending/Creating/Ready/Failed/Deleting),
+  `ready`, `createdAtMs`, `message`, `conditions`. Source `src/crd/branch.rs` + manifest
+  `deploy/crds/streamlinebranch-crd.yaml`.
+- **`StreamlineContract` CRD** (`streamline.io/v1alpha1`, kind `StreamlineContract`,
+  short name `slc`): declarative enforced data contracts (Moonshot M4). Spec:
+  `clusterRef`, `schemaJson`, `compatibility` (BACKWARD/FORWARD/FULL/NONE; default
+  BACKWARD), `bindTopics`. Status: `phase`, `registered`, `boundTopics`, `message`,
+  `conditions`. Source `src/crd/contract.rs` + manifest `deploy/crds/streamlinecontract-crd.yaml`.
+- Both CRDs are registered in `deploy/crds/kustomization.yaml`.
+- 10 new unit tests covering defaults, round-trip serialization, enum encoding,
+  and CRD generation via `kube::CustomResourceExt::crd()`.
+- **No live controllers yet**: these CRDs are declarative scaffolds for GitOps
+  flows. Reconcilers that drive the Moonshot HTTP control plane will land in a
+  follow-up. `cargo test --lib` now passes 88/88 (was 78/78).
+
 - test: add envtest suite for topic reconciler
 - test: add envtest for cluster rolling upgrade (2026-03-05)
 - refactor: extract CRD validation into shared module (2026-03-06)

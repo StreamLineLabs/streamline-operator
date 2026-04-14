@@ -6,6 +6,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.26+-326CE5.svg)](https://kubernetes.io/)
 [![Docs](https://img.shields.io/badge/docs-streamlinelabs.dev-brightgreen)](https://streamlinelabs.dev/docs/operations/kubernetes)
+[![Release](https://img.shields.io/github/v/release/streamlinelabs/streamline-operator?label=release)](https://github.com/streamlinelabs/streamline-operator/releases)
 
 Kubernetes operator for managing [Streamline](https://github.com/streamlinelabs/streamline) clusters, topics, and users using Custom Resource Definitions (CRDs).
 
@@ -204,6 +205,85 @@ Manages authentication credentials, ACLs, and quotas for users.
 | `spec.authentication.type` | string | — | scram-sha-256/512, plain, tlsClientAuth |
 | `spec.acls` | []ACL | — | Access control entries |
 | `spec.quotas` | QuotaSpec | — | Producer/consumer rate limits |
+
+## Moonshot CRDs
+
+> ⚠️ **Experimental** — These CRDs require Streamline server 0.3.0+ with moonshot feature flags enabled.
+
+### StreamlineContract
+
+Manages data contracts with producer-side schema enforcement and cryptographic attestations.
+
+```yaml
+apiVersion: streaming.streamlinelabs.dev/v1alpha1
+kind: StreamlineContract
+metadata:
+  name: events-contract
+spec:
+  clusterRef: my-cluster
+  topic: events
+  schema:
+    type: json-schema
+    definition: |
+      {"type":"object","required":["id","timestamp"],"properties":{"id":{"type":"string"},"timestamp":{"type":"string","format":"date-time"}}}
+  enforcement: reject
+  attestation:
+    enabled: true
+    signingKeyRef: producer-signing-key
+```
+
+### StreamlineBranch
+
+Manages topic branches for replay, A/B testing, and counterfactual analysis.
+
+```yaml
+apiVersion: streaming.streamlinelabs.dev/v1alpha1
+kind: StreamlineBranch
+metadata:
+  name: events-experiment
+spec:
+  clusterRef: my-cluster
+  sourceTopic: events
+  branchName: experiment-v2
+  fromOffset: latest
+```
+
+### StreamlineMemory
+
+Manages MCP-based agent memory namespaces.
+
+```yaml
+apiVersion: streaming.streamlinelabs.dev/v1alpha1
+kind: StreamlineMemory
+metadata:
+  name: agent-memory
+spec:
+  clusterRef: my-cluster
+  namespace: chatbot-v1
+  retentionDays: 90
+  semanticSearch:
+    enabled: true
+    embeddingModel: bge-small
+```
+
+### StreamlineEdge
+
+Manages edge sync endpoints with CRDT merge policies.
+
+```yaml
+apiVersion: streaming.streamlinelabs.dev/v1alpha1
+kind: StreamlineEdge
+metadata:
+  name: edge-sync
+spec:
+  clusterRef: my-cluster
+  topics:
+    - user-preferences
+    - offline-actions
+  syncProtocol: quic
+  mergePolicy: last-writer-wins
+  maxOfflineDuration: 72h
+```
 
 ## Development
 
