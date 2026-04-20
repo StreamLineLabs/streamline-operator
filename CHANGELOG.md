@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.3.0] - 2026-04-20
+
 ### Added (Moonshot scaffolds)
 - **`StreamlineBranch` CRD** (`streamline.io/v1alpha1`, kind `StreamlineBranch`, short name `slb`):
   declarative time-travel branches (Moonshot M5). Spec: `clusterRef`, `parent`,
