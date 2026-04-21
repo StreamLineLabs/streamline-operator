@@ -15,6 +15,9 @@ rules:
       - streamlineclusters
       - streamlinetopics
       - streamlineusers
+      - streamlinebranches
+      - streamlinebackups
+      - streamlinecontracts
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # CRD status subresource — each controller updates .status
@@ -23,6 +26,9 @@ rules:
       - streamlineclusters/status
       - streamlinetopics/status
       - streamlineusers/status
+      - streamlinebranches/status
+      - streamlinebackups/status
+      - streamlinecontracts/status
     verbs: ["get", "update", "patch"]
 
   # CRD finalizers — controllers add/remove finalizers for safe cleanup
@@ -31,6 +37,9 @@ rules:
       - streamlineclusters/finalizers
       - streamlinetopics/finalizers
       - streamlineusers/finalizers
+      - streamlinebranches/finalizers
+      - streamlinebackups/finalizers
+      - streamlinecontracts/finalizers
     verbs: ["update"]
 
   # -----------------------------------------------------------
