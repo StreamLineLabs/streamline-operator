@@ -53,7 +53,7 @@ async-trait = "0.1"
 rand = "0.8"
 
 # Health probe HTTP server
-axum = "0.7"
+axum = "0.8"
 
 # HTTP client for Streamline API calls
 reqwest = { version = "0.12", features = ["json"] }
