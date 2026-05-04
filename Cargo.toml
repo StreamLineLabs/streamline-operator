@@ -56,7 +56,7 @@ rand = "0.8"
 axum = "0.7"
 
 # HTTP client for Streamline API calls
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
