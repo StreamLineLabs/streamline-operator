@@ -7,9 +7,7 @@ use crate::conditions::{
     build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE, MEMORY_FINALIZER,
 };
 use crate::controllers::error_policy_backoff;
-use crate::crd::{
-    MemoryCondition, MemoryPhase, MemoryStatus, StreamlineCluster, StreamlineMemory,
-};
+use crate::crd::{MemoryCondition, MemoryPhase, MemoryStatus, StreamlineCluster, StreamlineMemory};
 use crate::error::{OperatorError, Result};
 use futures::StreamExt;
 use kube::api::{Api, Patch, PatchParams};
@@ -36,7 +34,10 @@ pub struct MemoryController {
 impl MemoryController {
     /// Create a new memory controller
     pub fn new(client: Client, http_client: reqwest::Client) -> Self {
-        Self { client, http_client }
+        Self {
+            client,
+            http_client,
+        }
     }
 
     /// Run the memory controller
@@ -75,9 +76,7 @@ impl MemoryController {
     fn topic_name(memory: &StreamlineMemory, tier: &str) -> String {
         format!(
             "_memory.{}.{}.{}",
-            memory.spec.tenant,
-            memory.spec.agent_id,
-            tier
+            memory.spec.tenant, memory.spec.agent_id, tier
         )
     }
 
@@ -170,11 +169,7 @@ impl MemoryController {
     }
 
     /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(
-        &self,
-        memory: &StreamlineMemory,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn ensure_finalizer(&self, memory: &StreamlineMemory, namespace: &str) -> Result<()> {
         let finalizers = memory.metadata.finalizers.as_deref().unwrap_or_default();
         if finalizers.contains(&MEMORY_FINALIZER.to_string()) {
             return Ok(());
@@ -228,7 +223,10 @@ impl MemoryController {
                     .send()
                     .await
                 {
-                    warn!("Failed to delete memory topic {} from cluster API: {}", topic_name, e);
+                    warn!(
+                        "Failed to delete memory topic {} from cluster API: {}",
+                        topic_name, e
+                    );
                 }
             }
         } else {
@@ -256,11 +254,7 @@ impl MemoryController {
             }
         });
         memories
-            .patch(
-                &name,
-                &PatchParams::default(),
-                &Patch::Merge(&patch),
-            )
+            .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
@@ -278,9 +272,18 @@ impl MemoryController {
         http_endpoint: &str,
     ) -> Result<()> {
         let retentions = [
-            ("episodic", Self::retention_ms(memory.spec.tiers.episodic_retention_days)),
-            ("semantic", Self::retention_ms(memory.spec.tiers.semantic_retention_days)),
-            ("procedural", Self::retention_ms(memory.spec.tiers.procedural_retention_days)),
+            (
+                "episodic",
+                Self::retention_ms(memory.spec.tiers.episodic_retention_days),
+            ),
+            (
+                "semantic",
+                Self::retention_ms(memory.spec.tiers.semantic_retention_days),
+            ),
+            (
+                "procedural",
+                Self::retention_ms(memory.spec.tiers.procedural_retention_days),
+            ),
         ];
 
         for (tier, retention_ms) in &retentions {
@@ -331,11 +334,7 @@ impl MemoryController {
     }
 
     /// Update status to ready
-    async fn update_status_ready(
-        &self,
-        memory: &StreamlineMemory,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn update_status_ready(&self, memory: &StreamlineMemory, namespace: &str) -> Result<()> {
         let name = memory.name_any();
         let memories: Api<StreamlineMemory> = Api::namespaced(self.client.clone(), namespace);
 
@@ -402,12 +401,7 @@ impl MemoryController {
         let mut cond_fields = Vec::new();
         set_condition(
             &mut cond_fields,
-            build_condition(
-                MEMORY_CONDITION_READY,
-                CONDITION_FALSE,
-                "Pending",
-                message,
-            ),
+            build_condition(MEMORY_CONDITION_READY, CONDITION_FALSE, "Pending", message),
         );
         set_condition(
             &mut cond_fields,
@@ -508,6 +502,8 @@ impl MemoryController {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]

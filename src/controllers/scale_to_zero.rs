@@ -14,7 +14,7 @@
 use crate::crd::StreamlineCluster;
 use crate::error::{OperatorError, Result};
 use k8s_openapi::api::apps::v1::StatefulSet;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{Api, Patch, PatchParams, PostParams};
 use kube::{Client, Resource, ResourceExt};
 use schemars::JsonSchema;
@@ -363,7 +363,10 @@ impl ScaleToZeroController {
 
         match api.get(&name).await {
             Ok(_existing) => {
-                info!("Updating KEDA ScaledObject {} in namespace {}", name, namespace);
+                info!(
+                    "Updating KEDA ScaledObject {} in namespace {}",
+                    name, namespace
+                );
                 api.patch(
                     &name,
                     &PatchParams::apply("streamline-operator"),
@@ -373,7 +376,10 @@ impl ScaleToZeroController {
                 .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
             }
             Err(_) => {
-                info!("Creating KEDA ScaledObject {} in namespace {}", name, namespace);
+                info!(
+                    "Creating KEDA ScaledObject {} in namespace {}",
+                    name, namespace
+                );
                 api.create(&PostParams::default(), &scaled_object)
                     .await
                     .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
@@ -405,10 +411,16 @@ impl ScaleToZeroController {
 
         match api.delete(&name, &Default::default()).await {
             Ok(_) => {
-                info!("Deleted KEDA ScaledObject {} in namespace {}", name, namespace);
+                info!(
+                    "Deleted KEDA ScaledObject {} in namespace {}",
+                    name, namespace
+                );
             }
             Err(kube::Error::Api(e)) if e.code == 404 => {
-                debug!("KEDA ScaledObject {} does not exist, nothing to delete", name);
+                debug!(
+                    "KEDA ScaledObject {} does not exist, nothing to delete",
+                    name
+                );
             }
             Err(e) => {
                 warn!("Failed to delete KEDA ScaledObject {}: {}", name, e);
@@ -480,8 +492,8 @@ impl ScaleToZeroController {
             }
         });
 
-        let obj: kube::api::DynamicObject =
-            serde_json::from_value(data).map_err(|e| OperatorError::Serialization(e.to_string()))?;
+        let obj: kube::api::DynamicObject = serde_json::from_value(data)
+            .map_err(|e| OperatorError::Serialization(e.to_string()))?;
 
         Ok(obj)
     }
@@ -525,6 +537,9 @@ impl ScaleToZeroController {
 // ---------------------------------------------------------------------------
 
 /// Build a [`ClusterActivitySnapshot`] from raw metric values and the configured idle timeout.
+// Argument count is part of the published API surface; grouping them into a struct
+// would be a breaking change for downstream callers.
+#[allow(clippy::too_many_arguments)]
 pub fn build_activity_snapshot(
     cluster_name: &str,
     namespace: &str,
@@ -562,6 +577,8 @@ pub fn build_activity_snapshot(
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     fn default_config() -> ScaleToZeroConfig {
@@ -717,16 +734,8 @@ mod tests {
         let now = chrono::Utc::now().timestamp();
         let last_activity = now - 600;
 
-        let snap = build_activity_snapshot(
-            "my-cluster",
-            "prod",
-            0.0,
-            0.0,
-            0,
-            0,
-            last_activity,
-            300,
-        );
+        let snap =
+            build_activity_snapshot("my-cluster", "prod", 0.0, 0.0, 0, 0, last_activity, 300);
 
         assert!(snap.is_idle);
         assert!(snap.idle_duration_seconds >= 300);
@@ -737,16 +746,8 @@ mod tests {
     fn test_build_activity_snapshot_active() {
         let now = chrono::Utc::now().timestamp();
 
-        let snap = build_activity_snapshot(
-            "my-cluster",
-            "prod",
-            500.0,
-            100_000.0,
-            5,
-            200,
-            now,
-            300,
-        );
+        let snap =
+            build_activity_snapshot("my-cluster", "prod", 500.0, 100_000.0, 5, 200, now, 300);
 
         assert!(!snap.is_idle);
         assert_eq!(snap.active_connections, 5);
@@ -836,4 +837,3 @@ mod tests {
         }
     }
 }
-

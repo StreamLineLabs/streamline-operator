@@ -33,13 +33,12 @@ pub use controllers::{
     UserController,
 };
 pub use crd::{
-    BackupCondition, BackupPhase, BackupSpec, BackupStatus, BackupStorage, BackupType,
-    BranchPhase, BranchSpec, BranchStatus, ClusterCondition, ClusterPhase, ClusterSpec,
-    ClusterStatus, ClusterStorage, ClusterTls, ContractCompatibility, ContractPhase,
-    ContractSpec, ContractStatus, MemoryCondition, MemoryDecay, MemoryPhase, MemorySpec,
-    MemoryStatus, MemoryTiers, ResourceRequirements, StreamlineBackup, StreamlineBranch,
-    StreamlineCluster, StreamlineContract, StreamlineMemory, StreamlineTopic, StreamlineUser,
-    TopicSpec, TopicStatus, UserCredentials, UserPermission, UserSpec, UserStatus,
+    BackupCondition, BackupPhase, BackupSpec, BackupStatus, BackupStorage, BackupType, BranchPhase,
+    BranchSpec, BranchStatus, ClusterCondition, ClusterPhase, ClusterSpec, ClusterStatus,
+    ClusterStorage, ClusterTls, ContractCompatibility, ContractPhase, ContractSpec, ContractStatus,
+    MemoryCondition, MemoryDecay, MemoryPhase, MemorySpec, MemoryStatus, MemoryTiers,
+    ResourceRequirements, StreamlineBackup, StreamlineBranch, StreamlineCluster,
+    StreamlineContract, StreamlineMemory, StreamlineTopic, StreamlineUser, TopicSpec, TopicStatus,
+    UserCredentials, UserPermission, UserSpec, UserStatus,
 };
 pub use error::{OperatorError, Result};
-

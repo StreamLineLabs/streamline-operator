@@ -33,9 +33,7 @@ pub use contract::{
     ContractCompatibility, ContractCondition, ContractPhase, ContractSpec, ContractStatus,
     StreamlineContract,
 };
-pub use edge::{
-    BootstrapConfig, EdgeCondition, EdgeSpec, EdgeStatus, StreamlineEdge, SyncConfig,
-};
+pub use edge::{BootstrapConfig, EdgeCondition, EdgeSpec, EdgeStatus, StreamlineEdge, SyncConfig};
 pub use memory::{
     MemoryCondition, MemoryDecay, MemoryPhase, MemorySpec, MemoryStatus, MemoryTiers,
     StreamlineMemory,

@@ -2,12 +2,10 @@
 //! Manages branch lifecycle via the admin API.
 
 use crate::conditions::{
-    build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE, BRANCH_FINALIZER,
+    build_condition, set_condition, BRANCH_FINALIZER, CONDITION_FALSE, CONDITION_TRUE,
 };
 use crate::controllers::error_policy_backoff;
-use crate::crd::{
-    BranchCondition, BranchPhase, BranchStatus, StreamlineBranch, StreamlineCluster,
-};
+use crate::crd::{BranchCondition, BranchPhase, BranchStatus, StreamlineBranch, StreamlineCluster};
 use crate::error::{OperatorError, Result};
 use futures::StreamExt;
 use kube::api::{Api, Patch, PatchParams};
@@ -31,7 +29,10 @@ pub struct BranchController {
 impl BranchController {
     /// Create a new branch controller
     pub fn new(client: Client, http_client: reqwest::Client) -> Self {
-        Self { client, http_client }
+        Self {
+            client,
+            http_client,
+        }
     }
 
     /// Run the branch controller
@@ -147,11 +148,7 @@ impl BranchController {
     }
 
     /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(
-        &self,
-        branch: &StreamlineBranch,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn ensure_finalizer(&self, branch: &StreamlineBranch, namespace: &str) -> Result<()> {
         let finalizers = branch.metadata.finalizers.as_deref().unwrap_or_default();
         if finalizers.contains(&BRANCH_FINALIZER.to_string()) {
             return Ok(());
@@ -195,10 +192,7 @@ impl BranchController {
                 "http://{}-0.{}-headless.{}.svc:{}",
                 cluster_name, cluster_name, namespace, cluster.spec.http_port
             );
-            info!(
-                "Deleting branch {} from cluster at {}",
-                name, http_endpoint
-            );
+            info!("Deleting branch {} from cluster at {}", name, http_endpoint);
             if let Err(e) = self
                 .http_client
                 .delete(format!("{}/api/v1/branches/{}", http_endpoint, name))
@@ -232,11 +226,7 @@ impl BranchController {
             }
         });
         branches
-            .patch(
-                &name,
-                &PatchParams::default(),
-                &Patch::Merge(&patch),
-            )
+            .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
@@ -375,12 +365,7 @@ impl BranchController {
         let mut cond_fields = Vec::new();
         set_condition(
             &mut cond_fields,
-            build_condition(
-                BRANCH_CONDITION_ACTIVE,
-                CONDITION_FALSE,
-                "Pending",
-                message,
-            ),
+            build_condition(BRANCH_CONDITION_ACTIVE, CONDITION_FALSE, "Pending", message),
         );
 
         let conditions: Vec<BranchCondition> = cond_fields

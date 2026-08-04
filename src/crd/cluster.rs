@@ -498,10 +498,7 @@ impl ClusterSpec {
         let mut errors = Vec::new();
 
         if self.replicas < 1 {
-            errors.push(format!(
-                "replicas must be >= 1, got {}",
-                self.replicas
-            ));
+            errors.push(format!("replicas must be >= 1, got {}", self.replicas));
         }
         if self.replicas > 1 && self.replicas % 2 == 0 {
             // Even replicas break Raft quorum — warn but allow
@@ -518,16 +515,10 @@ impl ClusterSpec {
             ));
         }
         if self.http_port < 1 || self.http_port > 65535 {
-            errors.push(format!(
-                "httpPort must be 1-65535, got {}",
-                self.http_port
-            ));
+            errors.push(format!("httpPort must be 1-65535, got {}", self.http_port));
         }
         if self.raft_port < 1 || self.raft_port > 65535 {
-            errors.push(format!(
-                "raftPort must be 1-65535, got {}",
-                self.raft_port
-            ));
+            errors.push(format!("raftPort must be 1-65535, got {}", self.raft_port));
         }
 
         if self.kafka_port == self.http_port
@@ -572,6 +563,8 @@ impl ClusterSpec {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]
@@ -591,8 +584,7 @@ mod tests {
 
     #[test]
     fn test_cluster_spec_validate_negative_replicas() {
-        let spec: ClusterSpec =
-            serde_json::from_str(r#"{"replicas": -1}"#).unwrap();
+        let spec: ClusterSpec = serde_json::from_str(r#"{"replicas": -1}"#).unwrap();
         let result = spec.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err()[0].contains("replicas must be >= 1"));
@@ -609,8 +601,7 @@ mod tests {
 
     #[test]
     fn test_cluster_spec_validate_invalid_port() {
-        let spec: ClusterSpec =
-            serde_json::from_str(r#"{"kafkaPort": 99999}"#).unwrap();
+        let spec: ClusterSpec = serde_json::from_str(r#"{"kafkaPort": 99999}"#).unwrap();
         let result = spec.validate();
         assert!(result.is_err());
     }
@@ -628,4 +619,3 @@ mod tests {
         assert_eq!(storage.access_modes, vec!["ReadWriteOnce"]);
     }
 }
-

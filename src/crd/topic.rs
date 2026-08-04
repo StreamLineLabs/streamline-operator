@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 #[kube(
     group = "streamline.io",
     version = "v1alpha1",
-
     kind = "StreamlineTopic",
     namespaced,
     status = "TopicStatus",
@@ -241,6 +240,8 @@ fn default_compression_type() -> String {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]
@@ -266,4 +267,3 @@ mod tests {
         assert_eq!(phase, TopicPhase::Pending);
     }
 }
-

@@ -48,9 +48,15 @@ impl OperatorMetrics {
     pub fn inc_reconcile(&self, resource: &str) {
         self.reconcile_total.fetch_add(1, Ordering::Relaxed);
         match resource {
-            "cluster" => { self.reconcile_cluster_total.fetch_add(1, Ordering::Relaxed); }
-            "topic" => { self.reconcile_topic_total.fetch_add(1, Ordering::Relaxed); }
-            "user" => { self.reconcile_user_total.fetch_add(1, Ordering::Relaxed); }
+            "cluster" => {
+                self.reconcile_cluster_total.fetch_add(1, Ordering::Relaxed);
+            }
+            "topic" => {
+                self.reconcile_topic_total.fetch_add(1, Ordering::Relaxed);
+            }
+            "user" => {
+                self.reconcile_user_total.fetch_add(1, Ordering::Relaxed);
+            }
             _ => {}
         }
     }
@@ -62,9 +68,16 @@ impl OperatorMetrics {
     pub fn inc_error(&self, resource: &str) {
         self.reconcile_errors.fetch_add(1, Ordering::Relaxed);
         match resource {
-            "cluster" => { self.reconcile_cluster_errors.fetch_add(1, Ordering::Relaxed); }
-            "topic" => { self.reconcile_topic_errors.fetch_add(1, Ordering::Relaxed); }
-            "user" => { self.reconcile_user_errors.fetch_add(1, Ordering::Relaxed); }
+            "cluster" => {
+                self.reconcile_cluster_errors
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            "topic" => {
+                self.reconcile_topic_errors.fetch_add(1, Ordering::Relaxed);
+            }
+            "user" => {
+                self.reconcile_user_errors.fetch_add(1, Ordering::Relaxed);
+            }
             _ => {}
         }
     }
@@ -82,7 +95,10 @@ impl OperatorMetrics {
 
     /// Start a timer that records duration on drop.
     pub fn start_timer(&self) -> ReconcileTimer<'_> {
-        ReconcileTimer { metrics: self, start: Instant::now() }
+        ReconcileTimer {
+            metrics: self,
+            start: Instant::now(),
+        }
     }
 
     /// Render metrics in Prometheus text exposition format.
@@ -91,31 +107,85 @@ impl OperatorMetrics {
 
         out.push_str("# HELP streamline_operator_reconcile_total Total reconciliation attempts\n");
         out.push_str("# TYPE streamline_operator_reconcile_total counter\n");
-        push_counter(&mut out, "streamline_operator_reconcile_total", &[], self.reconcile_total.load(Ordering::Relaxed));
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_total",
+            &[],
+            self.reconcile_total.load(Ordering::Relaxed),
+        );
 
-        out.push_str("# HELP streamline_operator_reconcile_success_total Successful reconciliations\n");
+        out.push_str(
+            "# HELP streamline_operator_reconcile_success_total Successful reconciliations\n",
+        );
         out.push_str("# TYPE streamline_operator_reconcile_success_total counter\n");
-        push_counter(&mut out, "streamline_operator_reconcile_success_total", &[], self.reconcile_success.load(Ordering::Relaxed));
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_success_total",
+            &[],
+            self.reconcile_success.load(Ordering::Relaxed),
+        );
 
         out.push_str("# HELP streamline_operator_reconcile_errors_total Failed reconciliations\n");
         out.push_str("# TYPE streamline_operator_reconcile_errors_total counter\n");
-        push_counter(&mut out, "streamline_operator_reconcile_errors_total", &[], self.reconcile_errors.load(Ordering::Relaxed));
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_errors_total",
+            &[],
+            self.reconcile_errors.load(Ordering::Relaxed),
+        );
 
         out.push_str("# HELP streamline_operator_reconcile_by_resource_total Reconciliations per resource type\n");
         out.push_str("# TYPE streamline_operator_reconcile_by_resource_total counter\n");
-        push_counter(&mut out, "streamline_operator_reconcile_by_resource_total", &[("resource", "cluster")], self.reconcile_cluster_total.load(Ordering::Relaxed));
-        push_counter(&mut out, "streamline_operator_reconcile_by_resource_total", &[("resource", "topic")], self.reconcile_topic_total.load(Ordering::Relaxed));
-        push_counter(&mut out, "streamline_operator_reconcile_by_resource_total", &[("resource", "user")], self.reconcile_user_total.load(Ordering::Relaxed));
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_by_resource_total",
+            &[("resource", "cluster")],
+            self.reconcile_cluster_total.load(Ordering::Relaxed),
+        );
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_by_resource_total",
+            &[("resource", "topic")],
+            self.reconcile_topic_total.load(Ordering::Relaxed),
+        );
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_by_resource_total",
+            &[("resource", "user")],
+            self.reconcile_user_total.load(Ordering::Relaxed),
+        );
 
         out.push_str("# HELP streamline_operator_reconcile_errors_by_resource_total Errors per resource type\n");
         out.push_str("# TYPE streamline_operator_reconcile_errors_by_resource_total counter\n");
-        push_counter(&mut out, "streamline_operator_reconcile_errors_by_resource_total", &[("resource", "cluster")], self.reconcile_cluster_errors.load(Ordering::Relaxed));
-        push_counter(&mut out, "streamline_operator_reconcile_errors_by_resource_total", &[("resource", "topic")], self.reconcile_topic_errors.load(Ordering::Relaxed));
-        push_counter(&mut out, "streamline_operator_reconcile_errors_by_resource_total", &[("resource", "user")], self.reconcile_user_errors.load(Ordering::Relaxed));
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_errors_by_resource_total",
+            &[("resource", "cluster")],
+            self.reconcile_cluster_errors.load(Ordering::Relaxed),
+        );
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_errors_by_resource_total",
+            &[("resource", "topic")],
+            self.reconcile_topic_errors.load(Ordering::Relaxed),
+        );
+        push_counter(
+            &mut out,
+            "streamline_operator_reconcile_errors_by_resource_total",
+            &[("resource", "user")],
+            self.reconcile_user_errors.load(Ordering::Relaxed),
+        );
 
-        out.push_str("# HELP streamline_operator_leader_transitions_total Leader election transitions\n");
+        out.push_str(
+            "# HELP streamline_operator_leader_transitions_total Leader election transitions\n",
+        );
         out.push_str("# TYPE streamline_operator_leader_transitions_total counter\n");
-        push_counter(&mut out, "streamline_operator_leader_transitions_total", &[], self.leader_transitions.load(Ordering::Relaxed));
+        push_counter(
+            &mut out,
+            "streamline_operator_leader_transitions_total",
+            &[],
+            self.leader_transitions.load(Ordering::Relaxed),
+        );
 
         // Duration histogram
         if let Ok(h) = self.duration_buckets.lock() {
@@ -189,7 +259,9 @@ impl DurationHistogram {
             }
         }
         // Overflow bucket (+Inf)
-        *self.buckets.last_mut().expect("buckets non-empty") += 1;
+        if let Some(overflow) = self.buckets.last_mut() {
+            *overflow += 1;
+        }
     }
 }
 
@@ -198,7 +270,9 @@ fn push_counter(out: &mut String, name: &str, labels: &[(&str, &str)], value: u6
     if !labels.is_empty() {
         out.push('{');
         for (i, (k, v)) in labels.iter().enumerate() {
-            if i > 0 { out.push(','); }
+            if i > 0 {
+                out.push(',');
+            }
             out.push_str(k);
             out.push_str("=\"");
             out.push_str(v);
@@ -218,6 +292,8 @@ pub fn get() -> &'static OperatorMetrics {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]
@@ -272,9 +348,9 @@ mod tests {
     #[test]
     fn test_duration_histogram() {
         let m = OperatorMetrics::new();
-        m.observe_duration_ms(3);    // bucket: ≤5
-        m.observe_duration_ms(50);   // bucket: ≤50
-        m.observe_duration_ms(500);  // bucket: ≤500
+        m.observe_duration_ms(3); // bucket: ≤5
+        m.observe_duration_ms(50); // bucket: ≤50
+        m.observe_duration_ms(500); // bucket: ≤500
         m.observe_duration_ms(20000); // bucket: +Inf
         let output = m.render();
         assert!(output.contains("reconcile_duration_ms_bucket"));
@@ -286,13 +362,42 @@ mod tests {
     #[test]
     fn test_duration_histogram_buckets_cumulative() {
         let h = &mut DurationHistogram::new();
-        h.observe(1);   // ≤5
-        h.observe(7);   // ≤10
+        h.observe(1); // ≤5
+        h.observe(7); // ≤10
         h.observe(100); // ≤100
         assert_eq!(h.count, 3);
         assert_eq!(h.sum, 108);
         assert_eq!(h.buckets[0], 1); // ≤5
         assert_eq!(h.buckets[1], 1); // ≤10
+    }
+
+    #[test]
+    fn test_duration_histogram_overflow_bucket_is_last_slot() {
+        // Regression: the +Inf overflow slot used to be reached via `.expect()`.
+        // Values above the last boundary must land in the final slot, not panic.
+        let h = &mut DurationHistogram::new();
+        let overflow_index = DURATION_BUCKETS_MS.len();
+        h.observe(DURATION_BUCKETS_MS[overflow_index - 1] + 1);
+        h.observe(u64::MAX / 2);
+
+        assert_eq!(h.count, 2);
+        assert_eq!(h.buckets[overflow_index], 2);
+        assert!(
+            h.buckets[..overflow_index].iter().all(|&b| b == 0),
+            "overflow observations must not land in a bounded bucket"
+        );
+    }
+
+    #[test]
+    fn test_duration_histogram_boundary_is_inclusive() {
+        // Regression: an observation exactly on the last boundary belongs to that
+        // bucket, not to +Inf.
+        let h = &mut DurationHistogram::new();
+        let last_index = DURATION_BUCKETS_MS.len() - 1;
+        h.observe(DURATION_BUCKETS_MS[last_index]);
+
+        assert_eq!(h.buckets[last_index], 1);
+        assert_eq!(h.buckets[DURATION_BUCKETS_MS.len()], 0);
     }
 
     #[test]

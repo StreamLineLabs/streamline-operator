@@ -12,6 +12,7 @@
 //! RUST_LOG=debug streamline-operator
 //! ```
 
+use anyhow::Context;
 use clap::Parser;
 use kube::Client;
 use std::sync::Arc;
@@ -90,13 +91,14 @@ async fn main() -> anyhow::Result<()> {
         .timeout(std::time::Duration::from_secs(30))
         .pool_max_idle_per_host(4)
         .build()
-        .expect("Failed to create HTTP client");
+        .context("Failed to create HTTP client")?;
 
     // Create controllers
     let cluster_controller = Arc::new(ClusterController::new(client.clone()));
     let topic_controller = Arc::new(TopicController::new(client.clone(), http_client.clone()));
     let user_controller = Arc::new(UserController::new(client.clone(), http_client.clone()));
-    let contract_controller = Arc::new(ContractController::new(client.clone(), http_client.clone()));
+    let contract_controller =
+        Arc::new(ContractController::new(client.clone(), http_client.clone()));
     let branch_controller = Arc::new(BranchController::new(client.clone(), http_client.clone()));
     let memory_controller = Arc::new(MemoryController::new(client.clone(), http_client));
 
@@ -187,7 +189,10 @@ async fn main() -> anyhow::Result<()> {
         let listener = match tokio::net::TcpListener::bind(&health_addr).await {
             Ok(l) => l,
             Err(e) => {
-                error!("Failed to bind health probe server on {}: {}", health_addr, e);
+                error!(
+                    "Failed to bind health probe server on {}: {}",
+                    health_addr, e
+                );
                 return;
             }
         };
@@ -201,10 +206,10 @@ async fn main() -> anyhow::Result<()> {
     let metrics_addr = args.metrics_bind_address.clone();
     let metrics_handle = tokio::spawn(async move {
         use axum::{routing::get, Router};
-        let app = Router::new()
-            .route("/metrics", get(|| async {
-                streamline_operator::metrics::get().render()
-            }));
+        let app = Router::new().route(
+            "/metrics",
+            get(|| async { streamline_operator::metrics::get().render() }),
+        );
         let listener = match tokio::net::TcpListener::bind(&metrics_addr).await {
             Ok(l) => l,
             Err(e) => {
@@ -258,6 +263,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Stop the auxiliary HTTP servers so they release their listening sockets
+    health_handle.abort();
+    metrics_handle.abort();
+
     // Release the lease before exiting so a standby replica can take over immediately
     if let Some(e) = &elector {
         e.release().await;
@@ -266,4 +275,3 @@ async fn main() -> anyhow::Result<()> {
     info!("Streamline Operator shutting down");
     Ok(())
 }
-

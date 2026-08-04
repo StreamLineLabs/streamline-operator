@@ -318,6 +318,36 @@ cargo run -p streamline-operator -- --metrics-port 8080 --health-port 8081
 cargo test
 ```
 
+The default test run is hermetic: it needs no Kubernetes cluster, no Streamline
+server, and no Docker.
+
+#### Integration tests (opt-in)
+
+Tests that need a live Streamline server live in `tests/integration.rs` and are
+`#[ignore]`d, so they never run as part of `cargo test`. Every networked
+assertion is bounded by a timeout so a missing backend fails fast.
+
+```bash
+make integration-up        # start the server from docker-compose.test.yml
+make test-integration      # cargo test --test integration -- --ignored
+make integration-down
+```
+
+The image and endpoints are configurable — see
+[`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md#integration-test-variables):
+
+```bash
+STREAMLINE_TEST_IMAGE=ghcr.io/streamlinelabs/streamline:0.3.0 \
+STREAMLINE_TEST_HTTP_PORT=19094 \
+STREAMLINE_TEST_KAFKA_PORT=19092 make integration-up
+
+STREAMLINE_TEST_HTTP_ENDPOINT=http://127.0.0.1:19094 \
+STREAMLINE_TEST_KAFKA_ENDPOINT=127.0.0.1:19092 make test-integration
+```
+
+A separate Helm/kubectl suite lives in `scripts/helm-integration-test.sh` and
+requires a configured `kubectl` context.
+
 ### Lint
 
 ```bash

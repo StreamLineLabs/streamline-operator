@@ -44,19 +44,14 @@ pub struct ContractSpec {
 }
 
 /// Schema compatibility policies recognised by the Moonshot control plane.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum ContractCompatibility {
+    #[default]
     Backward,
     Forward,
     Full,
     None,
-}
-
-impl Default for ContractCompatibility {
-    fn default() -> Self {
-        Self::Backward
-    }
 }
 
 fn default_compatibility() -> ContractCompatibility {
@@ -114,6 +109,8 @@ pub struct ContractCondition {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use kube::CustomResourceExt;
 
@@ -146,6 +143,21 @@ mod tests {
     #[test]
     fn test_contract_phase_default() {
         assert_eq!(ContractPhase::default(), ContractPhase::Pending);
+    }
+
+    #[test]
+    fn test_contract_compatibility_default_is_backward() {
+        // Regression: `Default` is now derived — the default variant and its
+        // UPPERCASE serde representation must stay unchanged.
+        assert_eq!(
+            ContractCompatibility::default(),
+            ContractCompatibility::Backward
+        );
+        assert_eq!(
+            serde_json::to_string(&ContractCompatibility::default()).unwrap(),
+            "\"BACKWARD\""
+        );
+        assert_eq!(default_compatibility(), ContractCompatibility::default());
     }
 
     #[test]

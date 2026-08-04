@@ -4,8 +4,8 @@
 //! users and their credentials within Streamline clusters.
 
 use crate::conditions::{
-    build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE, USER_CONDITION_CREDENTIALS_READY,
-    USER_CONDITION_READY, USER_FINALIZER,
+    build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE,
+    USER_CONDITION_CREDENTIALS_READY, USER_CONDITION_READY, USER_FINALIZER,
 };
 use crate::controllers::error_policy_backoff;
 use crate::crd::{StreamlineCluster, StreamlineUser, UserPhase, UserStatus};
@@ -32,7 +32,10 @@ pub struct UserController {
 impl UserController {
     /// Create a new user controller
     pub fn new(client: Client, http_client: reqwest::Client) -> Self {
-        Self { client, http_client }
+        Self {
+            client,
+            http_client,
+        }
     }
 
     /// Run the user controller
@@ -147,11 +150,7 @@ impl UserController {
     }
 
     /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(
-        &self,
-        user: &StreamlineUser,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn ensure_finalizer(&self, user: &StreamlineUser, namespace: &str) -> Result<()> {
         let finalizers = user.metadata.finalizers.as_deref().unwrap_or_default();
         if finalizers.contains(&USER_FINALIZER.to_string()) {
             return Ok(());
@@ -196,7 +195,8 @@ impl UserController {
                 "Revoking credentials for user {} from cluster at {}",
                 name, http_endpoint
             );
-            if let Err(e) = self.http_client
+            if let Err(e) = self
+                .http_client
                 .delete(format!("{}/api/v1/users/{}", http_endpoint, name))
                 .send()
                 .await
@@ -228,15 +228,14 @@ impl UserController {
             }
         });
         users
-            .patch(
-                &name,
-                &PatchParams::default(),
-                &Patch::Merge(&patch),
-            )
+            .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
-        info!("Finalizer removed for StreamlineUser {}/{}", namespace, name);
+        info!(
+            "Finalizer removed for StreamlineUser {}/{}",
+            namespace, name
+        );
         Ok(Action::await_change())
     }
 
@@ -391,7 +390,8 @@ impl UserController {
             http_endpoint,
         );
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(format!("{}/api/v1/users", http_endpoint))
             .json(&user_config)
             .send()
@@ -413,7 +413,7 @@ impl UserController {
                     user.name_any(),
                     status,
                     body
-                )).into());
+                )));
             }
         }
 
@@ -431,15 +431,29 @@ impl UserController {
         let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
 
         let mut cond_fields = Vec::new();
-        set_condition(&mut cond_fields, build_condition(
-            USER_CONDITION_READY, CONDITION_TRUE, "UserReady", "User successfully created/updated",
-        ));
-        set_condition(&mut cond_fields, build_condition(
-            USER_CONDITION_CREDENTIALS_READY, CONDITION_TRUE, "CredentialsProvisioned",
-            &format!("Credentials stored in secret {}", credentials_secret),
-        ));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_READY,
+                CONDITION_TRUE,
+                "UserReady",
+                "User successfully created/updated",
+            ),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_CREDENTIALS_READY,
+                CONDITION_TRUE,
+                "CredentialsProvisioned",
+                &format!("Credentials stored in secret {}", credentials_secret),
+            ),
+        );
 
-        let conditions = cond_fields.into_iter().map(|c| c.into_user_condition()).collect();
+        let conditions = cond_fields
+            .into_iter()
+            .map(|c| c.into_user_condition())
+            .collect();
 
         let status = UserStatus {
             ready: true,
@@ -472,15 +486,24 @@ impl UserController {
         let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
 
         let mut cond_fields = Vec::new();
-        set_condition(&mut cond_fields, build_condition(
-            USER_CONDITION_READY, CONDITION_FALSE, "Pending", message,
-        ));
-        set_condition(&mut cond_fields, build_condition(
-            USER_CONDITION_CREDENTIALS_READY, CONDITION_FALSE, "WaitingForCluster",
-            "Credentials cannot be provisioned until cluster is ready",
-        ));
+        set_condition(
+            &mut cond_fields,
+            build_condition(USER_CONDITION_READY, CONDITION_FALSE, "Pending", message),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_CREDENTIALS_READY,
+                CONDITION_FALSE,
+                "WaitingForCluster",
+                "Credentials cannot be provisioned until cluster is ready",
+            ),
+        );
 
-        let conditions = cond_fields.into_iter().map(|c| c.into_user_condition()).collect();
+        let conditions = cond_fields
+            .into_iter()
+            .map(|c| c.into_user_condition())
+            .collect();
 
         let status = UserStatus {
             ready: false,
@@ -513,14 +536,29 @@ impl UserController {
         let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
 
         let mut cond_fields = Vec::new();
-        set_condition(&mut cond_fields, build_condition(
-            USER_CONDITION_READY, CONDITION_FALSE, "Error", error_message,
-        ));
-        set_condition(&mut cond_fields, build_condition(
-            USER_CONDITION_CREDENTIALS_READY, CONDITION_FALSE, "ProvisioningFailed", error_message,
-        ));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_READY,
+                CONDITION_FALSE,
+                "Error",
+                error_message,
+            ),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_CREDENTIALS_READY,
+                CONDITION_FALSE,
+                "ProvisioningFailed",
+                error_message,
+            ),
+        );
 
-        let conditions = cond_fields.into_iter().map(|c| c.into_user_condition()).collect();
+        let conditions = cond_fields
+            .into_iter()
+            .map(|c| c.into_user_condition())
+            .collect();
 
         let status = UserStatus {
             ready: false,
@@ -550,4 +588,3 @@ mod tests {
         // Controller tests require k8s cluster
     }
 }
-

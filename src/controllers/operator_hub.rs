@@ -315,7 +315,10 @@ impl OperatorHub {
                 Ok(())
             }
             None => {
-                debug!(name, "Attempted to uninstall operator that is not installed");
+                debug!(
+                    name,
+                    "Attempted to uninstall operator that is not installed"
+                );
                 Err(format!("operator '{}' is not installed", name))
             }
         }
@@ -380,7 +383,10 @@ impl OperatorHub {
         }
 
         if !updates.is_empty() {
-            info!(count = updates.len(), "Updates available for installed operators");
+            info!(
+                count = updates.len(),
+                "Updates available for installed operators"
+            );
         }
 
         updates
@@ -417,6 +423,8 @@ impl OperatorHub {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     fn default_hub() -> OperatorHub {
@@ -688,4 +696,3 @@ mod tests {
         assert_eq!(back, it);
     }
 }
-

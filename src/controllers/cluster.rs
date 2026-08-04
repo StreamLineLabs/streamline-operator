@@ -14,8 +14,7 @@ use crate::error::{OperatorError, Result};
 use chrono::Utc;
 use futures::StreamExt;
 use k8s_openapi::api::apps::v1::{
-    RollingUpdateStatefulSetStrategy, StatefulSet, StatefulSetSpec,
-    StatefulSetUpdateStrategy,
+    RollingUpdateStatefulSetStrategy, StatefulSet, StatefulSetSpec, StatefulSetUpdateStrategy,
 };
 use k8s_openapi::api::core::v1::{
     ConfigMap, Container, ContainerPort, EnvVar, PersistentVolumeClaim, PersistentVolumeClaimSpec,
@@ -124,8 +123,9 @@ impl ClusterController {
                     target_messages_per_second: autoscaling_spec.target_messages_per_second,
                     ..Default::default()
                 };
-                let autoscaler =
-                    crate::controllers::autoscaling::AutoScalingController::new(self.client.clone());
+                let autoscaler = crate::controllers::autoscaling::AutoScalingController::new(
+                    self.client.clone(),
+                );
                 autoscaler
                     .reconcile_hpa(&cluster, &namespace, &autoscaling_config)
                     .await?;
@@ -141,11 +141,7 @@ impl ClusterController {
     }
 
     /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(
-        &self,
-        cluster: &StreamlineCluster,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn ensure_finalizer(&self, cluster: &StreamlineCluster, namespace: &str) -> Result<()> {
         let finalizers = cluster.metadata.finalizers.as_deref().unwrap_or_default();
         if finalizers.contains(&CLUSTER_FINALIZER.to_string()) {
             return Ok(());
@@ -176,7 +172,10 @@ impl ClusterController {
         namespace: &str,
     ) -> std::result::Result<Action, OperatorError> {
         let name = cluster.name_any();
-        info!("Handling deletion of StreamlineCluster {}/{}", namespace, name);
+        info!(
+            "Handling deletion of StreamlineCluster {}/{}",
+            namespace, name
+        );
 
         // Clean up PVCs created by the StatefulSet
         let pvcs: Api<PersistentVolumeClaim> = Api::namespaced(self.client.clone(), namespace);
@@ -210,15 +209,14 @@ impl ClusterController {
             }
         });
         clusters
-            .patch(
-                &name,
-                &PatchParams::default(),
-                &Patch::Merge(&patch),
-            )
+            .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
-        info!("Finalizer removed for StreamlineCluster {}/{}", namespace, name);
+        info!(
+            "Finalizer removed for StreamlineCluster {}/{}",
+            namespace, name
+        );
         Ok(Action::await_change())
     }
 
@@ -263,8 +261,7 @@ tls:
   mtls_enabled: {}
   insecure_skip_verify: {}
 "#,
-                    tls.mtls_enabled,
-                    tls.insecure_skip_verify
+                    tls.mtls_enabled, tls.insecure_skip_verify
                 ));
             }
         }
@@ -721,35 +718,90 @@ tls:
 
         // Ready condition
         let (ready_status, ready_reason, ready_msg) = if ready_count == desired {
-            (CONDITION_TRUE, "AllBrokersReady", format!("{}/{} brokers ready", ready_count, desired))
+            (
+                CONDITION_TRUE,
+                "AllBrokersReady",
+                format!("{}/{} brokers ready", ready_count, desired),
+            )
         } else {
-            (CONDITION_FALSE, "BrokersNotReady", format!("{}/{} brokers ready", ready_count, desired))
+            (
+                CONDITION_FALSE,
+                "BrokersNotReady",
+                format!("{}/{} brokers ready", ready_count, desired),
+            )
         };
-        set_condition(&mut cond_fields, build_condition(CLUSTER_CONDITION_READY, ready_status, ready_reason, &ready_msg));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                CLUSTER_CONDITION_READY,
+                ready_status,
+                ready_reason,
+                &ready_msg,
+            ),
+        );
 
         // Available condition — at least one broker is ready
         let (avail_status, avail_reason, avail_msg) = if ready_count > 0 {
-            (CONDITION_TRUE, "MinimumAvailable", format!("{} broker(s) available", ready_count))
+            (
+                CONDITION_TRUE,
+                "MinimumAvailable",
+                format!("{} broker(s) available", ready_count),
+            )
         } else {
-            (CONDITION_FALSE, "NoBrokersAvailable", "No brokers are available".to_string())
+            (
+                CONDITION_FALSE,
+                "NoBrokersAvailable",
+                "No brokers are available".to_string(),
+            )
         };
-        set_condition(&mut cond_fields, build_condition(CLUSTER_CONDITION_AVAILABLE, avail_status, avail_reason, &avail_msg));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                CLUSTER_CONDITION_AVAILABLE,
+                avail_status,
+                avail_reason,
+                &avail_msg,
+            ),
+        );
 
         // Progressing condition — rolling out or scaling
         let (prog_status, prog_reason, prog_msg) = if ready_count < desired {
-            (CONDITION_TRUE, "ScalingUp", format!("Scaling from {} to {} replicas", ready_count, desired))
+            (
+                CONDITION_TRUE,
+                "ScalingUp",
+                format!("Scaling from {} to {} replicas", ready_count, desired),
+            )
         } else {
-            (CONDITION_FALSE, "UpToDate", "All replicas are up to date".to_string())
+            (
+                CONDITION_FALSE,
+                "UpToDate",
+                "All replicas are up to date".to_string(),
+            )
         };
-        set_condition(&mut cond_fields, build_condition(CLUSTER_CONDITION_PROGRESSING, prog_status, prog_reason, &prog_msg));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                CLUSTER_CONDITION_PROGRESSING,
+                prog_status,
+                prog_reason,
+                &prog_msg,
+            ),
+        );
 
         // Degraded condition — some brokers are down
         let (deg_status, deg_reason, deg_msg) = if ready_count > 0 && ready_count < desired {
-            (CONDITION_TRUE, "PartiallyReady", format!("Only {}/{} brokers ready", ready_count, desired))
+            (
+                CONDITION_TRUE,
+                "PartiallyReady",
+                format!("Only {}/{} brokers ready", ready_count, desired),
+            )
         } else {
             (CONDITION_FALSE, "Healthy", "Cluster is healthy".to_string())
         };
-        set_condition(&mut cond_fields, build_condition(CLUSTER_CONDITION_DEGRADED, deg_status, deg_reason, &deg_msg));
+        set_condition(
+            &mut cond_fields,
+            build_condition(CLUSTER_CONDITION_DEGRADED, deg_status, deg_reason, &deg_msg),
+        );
 
         let conditions = cond_fields
             .into_iter()

@@ -29,7 +29,10 @@ pub struct TopicController {
 impl TopicController {
     /// Create a new topic controller
     pub fn new(client: Client, http_client: reqwest::Client) -> Self {
-        Self { client, http_client }
+        Self {
+            client,
+            http_client,
+        }
     }
 
     /// Run the topic controller
@@ -137,11 +140,7 @@ impl TopicController {
     }
 
     /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(
-        &self,
-        topic: &StreamlineTopic,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn ensure_finalizer(&self, topic: &StreamlineTopic, namespace: &str) -> Result<()> {
         let finalizers = topic.metadata.finalizers.as_deref().unwrap_or_default();
         if finalizers.contains(&TOPIC_FINALIZER.to_string()) {
             return Ok(());
@@ -172,7 +171,10 @@ impl TopicController {
         namespace: &str,
     ) -> std::result::Result<Action, OperatorError> {
         let name = topic.name_any();
-        info!("Handling deletion of StreamlineTopic {}/{}", namespace, name);
+        info!(
+            "Handling deletion of StreamlineTopic {}/{}",
+            namespace, name
+        );
 
         // Attempt to delete topic from the Streamline cluster
         let clusters: Api<StreamlineCluster> = Api::namespaced(self.client.clone(), namespace);
@@ -182,11 +184,9 @@ impl TopicController {
                 "http://{}-0.{}-headless.{}.svc:{}",
                 cluster_name, cluster_name, namespace, cluster.spec.http_port
             );
-            info!(
-                "Deleting topic {} from cluster at {}",
-                name, http_endpoint
-            );
-            if let Err(e) = self.http_client
+            info!("Deleting topic {} from cluster at {}", name, http_endpoint);
+            if let Err(e) = self
+                .http_client
                 .delete(format!("{}/api/v1/topics/{}", http_endpoint, name))
                 .send()
                 .await
@@ -218,15 +218,14 @@ impl TopicController {
             }
         });
         topics
-            .patch(
-                &name,
-                &PatchParams::default(),
-                &Patch::Merge(&patch),
-            )
+            .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
-        info!("Finalizer removed for StreamlineTopic {}/{}", namespace, name);
+        info!(
+            "Finalizer removed for StreamlineTopic {}/{}",
+            namespace, name
+        );
         Ok(Action::await_change())
     }
 
@@ -268,7 +267,8 @@ impl TopicController {
             http_endpoint,
         );
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(format!("{}/api/v1/topics", http_endpoint))
             .json(&topic_config)
             .send()
@@ -291,7 +291,7 @@ impl TopicController {
                     topic.name_any(),
                     status,
                     body
-                )).into());
+                )));
             }
         }
 
@@ -304,14 +304,29 @@ impl TopicController {
         let topics: Api<StreamlineTopic> = Api::namespaced(self.client.clone(), namespace);
 
         let mut cond_fields = Vec::new();
-        set_condition(&mut cond_fields, build_condition(
-            TOPIC_CONDITION_READY, CONDITION_TRUE, "TopicReady", "Topic successfully created/updated",
-        ));
-        set_condition(&mut cond_fields, build_condition(
-            TOPIC_CONDITION_SYNCED, CONDITION_TRUE, "ConfigSynced", "Topic configuration is in sync with desired state",
-        ));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                TOPIC_CONDITION_READY,
+                CONDITION_TRUE,
+                "TopicReady",
+                "Topic successfully created/updated",
+            ),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                TOPIC_CONDITION_SYNCED,
+                CONDITION_TRUE,
+                "ConfigSynced",
+                "Topic configuration is in sync with desired state",
+            ),
+        );
 
-        let conditions = cond_fields.into_iter().map(|c| c.into_topic_condition()).collect();
+        let conditions = cond_fields
+            .into_iter()
+            .map(|c| c.into_topic_condition())
+            .collect();
 
         let status = TopicStatus {
             ready: true,
@@ -345,14 +360,24 @@ impl TopicController {
         let topics: Api<StreamlineTopic> = Api::namespaced(self.client.clone(), namespace);
 
         let mut cond_fields = Vec::new();
-        set_condition(&mut cond_fields, build_condition(
-            TOPIC_CONDITION_READY, CONDITION_FALSE, "Pending", message,
-        ));
-        set_condition(&mut cond_fields, build_condition(
-            TOPIC_CONDITION_SYNCED, CONDITION_FALSE, "WaitingForCluster", "Topic cannot sync until cluster is ready",
-        ));
+        set_condition(
+            &mut cond_fields,
+            build_condition(TOPIC_CONDITION_READY, CONDITION_FALSE, "Pending", message),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                TOPIC_CONDITION_SYNCED,
+                CONDITION_FALSE,
+                "WaitingForCluster",
+                "Topic cannot sync until cluster is ready",
+            ),
+        );
 
-        let conditions = cond_fields.into_iter().map(|c| c.into_topic_condition()).collect();
+        let conditions = cond_fields
+            .into_iter()
+            .map(|c| c.into_topic_condition())
+            .collect();
 
         let status = TopicStatus {
             ready: false,
@@ -386,14 +411,29 @@ impl TopicController {
         let topics: Api<StreamlineTopic> = Api::namespaced(self.client.clone(), namespace);
 
         let mut cond_fields = Vec::new();
-        set_condition(&mut cond_fields, build_condition(
-            TOPIC_CONDITION_READY, CONDITION_FALSE, "Error", error_message,
-        ));
-        set_condition(&mut cond_fields, build_condition(
-            TOPIC_CONDITION_SYNCED, CONDITION_FALSE, "SyncFailed", error_message,
-        ));
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                TOPIC_CONDITION_READY,
+                CONDITION_FALSE,
+                "Error",
+                error_message,
+            ),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                TOPIC_CONDITION_SYNCED,
+                CONDITION_FALSE,
+                "SyncFailed",
+                error_message,
+            ),
+        );
 
-        let conditions = cond_fields.into_iter().map(|c| c.into_topic_condition()).collect();
+        let conditions = cond_fields
+            .into_iter()
+            .map(|c| c.into_topic_condition())
+            .collect();
 
         let status = TopicStatus {
             ready: false,

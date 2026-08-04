@@ -48,7 +48,10 @@ impl LeaderElector {
             .or_else(|_| std::env::var("HOSTNAME"))
             .unwrap_or_else(|_| format!("operator-{:08x}", rand::random::<u32>()));
         info!(identity = %identity, namespace = %namespace, "Initialized leader elector");
-        Self { lease_api, identity }
+        Self {
+            lease_api,
+            identity,
+        }
     }
 
     /// Blocks until the lease is successfully acquired.
@@ -61,11 +64,17 @@ impl LeaderElector {
                     return Ok(());
                 }
                 Ok(false) => {
-                    debug!("Lease held by another instance, retrying in {:?}", RETRY_INTERVAL);
+                    debug!(
+                        "Lease held by another instance, retrying in {:?}",
+                        RETRY_INTERVAL
+                    );
                     tokio::time::sleep(RETRY_INTERVAL).await;
                 }
                 Err(e) => {
-                    warn!("Lease acquisition error: {}, retrying in {:?}", e, RETRY_INTERVAL);
+                    warn!(
+                        "Lease acquisition error: {}, retrying in {:?}",
+                        e, RETRY_INTERVAL
+                    );
                     tokio::time::sleep(RETRY_INTERVAL).await;
                 }
             }
@@ -174,7 +183,9 @@ impl LeaderElector {
             .unwrap_or(LEASE_DURATION_SECS) as i64;
 
         match renew_time {
-            Some(MicroTime(t)) => Utc::now().signed_duration_since(*t).num_seconds() > duration_secs,
+            Some(MicroTime(t)) => {
+                Utc::now().signed_duration_since(*t).num_seconds() > duration_secs
+            }
             None => true,
         }
     }
@@ -193,11 +204,7 @@ impl LeaderElector {
                 lease_transitions: Some(0),
             }),
         };
-        match self
-            .lease_api
-            .create(&PostParams::default(), &lease)
-            .await
-        {
+        match self.lease_api.create(&PostParams::default(), &lease).await {
             Ok(_) => Ok(true),
             Err(kube::Error::Api(ae)) if ae.code == 409 => Ok(false),
             Err(e) => Err(e.into()),
@@ -223,7 +230,11 @@ impl LeaderElector {
                 prev.and_then(|s| s.acquire_time.clone())
             },
             renew_time: Some(now.clone()),
-            lease_transitions: Some(if takeover { transitions + 1 } else { transitions }),
+            lease_transitions: Some(if takeover {
+                transitions + 1
+            } else {
+                transitions
+            }),
         });
 
         match self

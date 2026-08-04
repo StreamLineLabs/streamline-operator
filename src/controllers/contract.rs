@@ -31,7 +31,10 @@ pub struct ContractController {
 impl ContractController {
     /// Create a new contract controller
     pub fn new(client: Client, http_client: reqwest::Client) -> Self {
-        Self { client, http_client }
+        Self {
+            client,
+            http_client,
+        }
     }
 
     /// Run the contract controller
@@ -74,7 +77,9 @@ impl ContractController {
         crate::metrics::get().inc_reconcile("contract");
         let _timer = crate::metrics::get().start_timer();
         let name = contract.name_any();
-        let namespace = contract.namespace().unwrap_or_else(|| "default".to_string());
+        let namespace = contract
+            .namespace()
+            .unwrap_or_else(|| "default".to_string());
 
         info!("Reconciling StreamlineContract {}/{}", namespace, name);
 
@@ -160,11 +165,7 @@ impl ContractController {
     }
 
     /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(
-        &self,
-        contract: &StreamlineContract,
-        namespace: &str,
-    ) -> Result<()> {
+    async fn ensure_finalizer(&self, contract: &StreamlineContract, namespace: &str) -> Result<()> {
         let finalizers = contract.metadata.finalizers.as_deref().unwrap_or_default();
         if finalizers.contains(&CONTRACT_FINALIZER.to_string()) {
             return Ok(());
@@ -245,11 +246,7 @@ impl ContractController {
             }
         });
         contracts
-            .patch(
-                &name,
-                &PatchParams::default(),
-                &Patch::Merge(&patch),
-            )
+            .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
