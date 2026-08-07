@@ -195,7 +195,7 @@ impl BranchController {
             info!("Deleting branch {} from cluster at {}", name, http_endpoint);
             if let Err(e) = self
                 .http_client
-                .delete(format!("{}/api/v1/branches/{}", http_endpoint, name))
+                .delete(format!("{http_endpoint}/api/v1/branches/{name}"))
                 .send()
                 .await
             {
@@ -257,7 +257,7 @@ impl BranchController {
 
         let response = self
             .http_client
-            .post(format!("{}/api/v1/branches", http_endpoint))
+            .post(format!("{http_endpoint}/api/v1/branches"))
             .json(&body)
             .send()
             .await

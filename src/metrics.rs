@@ -195,14 +195,12 @@ impl OperatorMetrics {
             for (i, &boundary) in DURATION_BUCKETS_MS.iter().enumerate() {
                 cumulative += h.buckets[i];
                 out.push_str(&format!(
-                    "streamline_operator_reconcile_duration_ms_bucket{{le=\"{}\"}} {}\n",
-                    boundary, cumulative
+                    "streamline_operator_reconcile_duration_ms_bucket{{le=\"{boundary}\"}} {cumulative}\n"
                 ));
             }
             cumulative += h.buckets[DURATION_BUCKETS_MS.len()];
             out.push_str(&format!(
-                "streamline_operator_reconcile_duration_ms_bucket{{le=\"+Inf\"}} {}\n",
-                cumulative
+                "streamline_operator_reconcile_duration_ms_bucket{{le=\"+Inf\"}} {cumulative}\n"
             ));
             out.push_str(&format!(
                 "streamline_operator_reconcile_duration_ms_sum {}\n",

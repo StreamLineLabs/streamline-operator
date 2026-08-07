@@ -219,7 +219,7 @@ impl MemoryController {
                 info!("Deleting memory topic {} from cluster", topic_name);
                 if let Err(e) = self
                     .http_client
-                    .delete(format!("{}/api/v1/topics/{}", http_endpoint, topic_name))
+                    .delete(format!("{http_endpoint}/api/v1/topics/{topic_name}"))
                     .send()
                     .await
                 {
@@ -306,14 +306,13 @@ impl MemoryController {
 
             let response = self
                 .http_client
-                .post(format!("{}/api/v1/topics", http_endpoint))
+                .post(format!("{http_endpoint}/api/v1/topics"))
                 .json(&topic_config)
                 .send()
                 .await
                 .map_err(|e| {
                     OperatorError::Internal(format!(
-                        "HTTP request to create memory topic {} failed: {}",
-                        topic_name, e
+                        "HTTP request to create memory topic {topic_name} failed: {e}"
                     ))
                 })?;
 
@@ -323,8 +322,7 @@ impl MemoryController {
                 // 409 Conflict means topic already exists — treat as success
                 if status.as_u16() != 409 {
                     return Err(OperatorError::Internal(format!(
-                        "Failed to create memory topic {} (HTTP {}): {}",
-                        topic_name, status, body
+                        "Failed to create memory topic {topic_name} (HTTP {status}): {body}"
                     )));
                 }
             }

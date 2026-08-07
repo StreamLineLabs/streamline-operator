@@ -187,7 +187,7 @@ impl TopicController {
             info!("Deleting topic {} from cluster at {}", name, http_endpoint);
             if let Err(e) = self
                 .http_client
-                .delete(format!("{}/api/v1/topics/{}", http_endpoint, name))
+                .delete(format!("{http_endpoint}/api/v1/topics/{name}"))
                 .send()
                 .await
             {
@@ -269,7 +269,7 @@ impl TopicController {
 
         let response = self
             .http_client
-            .post(format!("{}/api/v1/topics", http_endpoint))
+            .post(format!("{http_endpoint}/api/v1/topics"))
             .json(&topic_config)
             .send()
             .await

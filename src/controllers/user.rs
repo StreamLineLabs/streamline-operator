@@ -197,7 +197,7 @@ impl UserController {
             );
             if let Err(e) = self
                 .http_client
-                .delete(format!("{}/api/v1/users/{}", http_endpoint, name))
+                .delete(format!("{http_endpoint}/api/v1/users/{name}"))
                 .send()
                 .await
             {
@@ -278,7 +278,7 @@ impl UserController {
                 })?;
 
                 String::from_utf8(password_bytes.0.clone()).map_err(|e| {
-                    OperatorError::Configuration(format!("Invalid password encoding: {}", e))
+                    OperatorError::Configuration(format!("Invalid password encoding: {e}"))
                 })?
             } else {
                 // Generate random password
@@ -392,7 +392,7 @@ impl UserController {
 
         let response = self
             .http_client
-            .post(format!("{}/api/v1/users", http_endpoint))
+            .post(format!("{http_endpoint}/api/v1/users"))
             .json(&user_config)
             .send()
             .await
@@ -446,7 +446,7 @@ impl UserController {
                 USER_CONDITION_CREDENTIALS_READY,
                 CONDITION_TRUE,
                 "CredentialsProvisioned",
-                &format!("Credentials stored in secret {}", credentials_secret),
+                &format!("Credentials stored in secret {credentials_secret}"),
             ),
         );
 

@@ -215,7 +215,7 @@ impl ContractController {
             );
             if let Err(e) = self
                 .http_client
-                .delete(format!("{}/api/v1/contracts/{}", http_endpoint, name))
+                .delete(format!("{http_endpoint}/api/v1/contracts/{name}"))
                 .send()
                 .await
             {
@@ -272,7 +272,7 @@ impl ContractController {
 
         let response = self
             .http_client
-            .post(format!("{}/api/v1/contracts/validate", http_endpoint))
+            .post(format!("{http_endpoint}/api/v1/contracts/validate"))
             .json(&body)
             .send()
             .await
@@ -288,8 +288,7 @@ impl ContractController {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             return Err(OperatorError::Reconciliation(format!(
-                "Contract validation failed (HTTP {}): {}",
-                status, body
+                "Contract validation failed (HTTP {status}): {body}"
             )));
         }
 
@@ -311,7 +310,7 @@ impl ContractController {
 
         let response = self
             .http_client
-            .post(format!("{}/api/v1/contracts", http_endpoint))
+            .post(format!("{http_endpoint}/api/v1/contracts"))
             .json(&body)
             .send()
             .await

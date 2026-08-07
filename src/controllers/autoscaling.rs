@@ -571,8 +571,7 @@ impl AutoScalingController {
                 if needed > recommended {
                     recommended = needed;
                     reasons.push(format!(
-                        "High throughput: {:.0} msg/s per broker. Target: {}",
-                        mps_per_broker, target_mps
+                        "High throughput: {mps_per_broker:.0} msg/s per broker. Target: {target_mps}"
                     ));
                     triggering.push("messages_per_second".to_string());
                 }

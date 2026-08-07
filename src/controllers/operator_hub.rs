@@ -266,12 +266,12 @@ impl OperatorHub {
             Some(o) => o,
             None => {
                 warn!(name, "Attempted to install unknown operator");
-                return Err(format!("operator '{}' not found in hub", name));
+                return Err(format!("operator '{name}' not found in hub"));
             }
         };
 
         if self.config.require_verified && !op.verified {
-            return Err(format!("operator '{}' is not verified", name));
+            return Err(format!("operator '{name}' is not verified"));
         }
 
         // Check capacity.
@@ -284,7 +284,7 @@ impl OperatorHub {
                 ));
             }
             if inst.contains_key(name) {
-                return Err(format!("operator '{}' is already installed", name));
+                return Err(format!("operator '{name}' is already installed"));
             }
         }
 
@@ -319,7 +319,7 @@ impl OperatorHub {
                     name,
                     "Attempted to uninstall operator that is not installed"
                 );
-                Err(format!("operator '{}' is not installed", name))
+                Err(format!("operator '{name}' is not installed"))
             }
         }
     }
@@ -330,7 +330,7 @@ impl OperatorHub {
             let ops = self.operators.read().await;
             match ops.get(name) {
                 Some(o) => o.version.clone(),
-                None => return Err(format!("operator '{}' not found in hub", name)),
+                None => return Err(format!("operator '{name}' not found in hub")),
             }
         };
 
@@ -339,8 +339,7 @@ impl OperatorHub {
             Some(op) => {
                 if op.version == latest_version {
                     return Err(format!(
-                        "operator '{}' is already at latest version {}",
-                        name, latest_version
+                        "operator '{name}' is already at latest version {latest_version}"
                     ));
                 }
                 info!(
@@ -354,7 +353,7 @@ impl OperatorHub {
                 op.last_reconcile_at = Some(chrono::Utc::now().to_rfc3339());
                 Ok(op.clone())
             }
-            None => Err(format!("operator '{}' is not installed", name)),
+            None => Err(format!("operator '{name}' is not installed")),
         }
     }
 

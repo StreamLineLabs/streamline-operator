@@ -29,14 +29,14 @@ pub enum OperatorError {
 impl fmt::Display for OperatorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OperatorError::KubeApi(msg) => write!(f, "Kubernetes API error: {}", msg),
-            OperatorError::Configuration(msg) => write!(f, "Configuration error: {}", msg),
-            OperatorError::Reconciliation(msg) => write!(f, "Reconciliation error: {}", msg),
-            OperatorError::Http(msg) => write!(f, "HTTP error: {}", msg),
-            OperatorError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
-            OperatorError::NotFound(msg) => write!(f, "Resource not found: {}", msg),
-            OperatorError::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
-            OperatorError::Internal(msg) => write!(f, "Internal error: {}", msg),
+            OperatorError::KubeApi(msg) => write!(f, "Kubernetes API error: {msg}"),
+            OperatorError::Configuration(msg) => write!(f, "Configuration error: {msg}"),
+            OperatorError::Reconciliation(msg) => write!(f, "Reconciliation error: {msg}"),
+            OperatorError::Http(msg) => write!(f, "HTTP error: {msg}"),
+            OperatorError::Serialization(msg) => write!(f, "Serialization error: {msg}"),
+            OperatorError::NotFound(msg) => write!(f, "Resource not found: {msg}"),
+            OperatorError::InvalidState(msg) => write!(f, "Invalid state: {msg}"),
+            OperatorError::Internal(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }
@@ -80,7 +80,7 @@ mod tests {
 
         for err in errors {
             // Ensure Display is implemented
-            let _ = format!("{}", err);
+            let _ = format!("{err}");
         }
     }
 }

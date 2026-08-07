@@ -180,7 +180,7 @@ impl ClusterController {
         // Clean up PVCs created by the StatefulSet
         let pvcs: Api<PersistentVolumeClaim> = Api::namespaced(self.client.clone(), namespace);
         let pvc_list = pvcs
-            .list(&ListParams::default().labels(&format!("app.kubernetes.io/instance={}", name)))
+            .list(&ListParams::default().labels(&format!("app.kubernetes.io/instance={name}")))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
@@ -635,7 +635,7 @@ tls:
                     match_labels: Some(selector),
                     ..Default::default()
                 },
-                service_name: format!("{}-headless", name),
+                service_name: format!("{name}-headless"),
                 template: pod_template,
                 volume_claim_templates: Some(volume_claim_templates),
                 pod_management_policy: Some("Parallel".to_string()),
@@ -675,7 +675,7 @@ tls:
 
         // Count ready pods
         let pod_list = pods
-            .list(&ListParams::default().labels(&format!("app.kubernetes.io/instance={}", name)))
+            .list(&ListParams::default().labels(&format!("app.kubernetes.io/instance={name}")))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
@@ -721,13 +721,13 @@ tls:
             (
                 CONDITION_TRUE,
                 "AllBrokersReady",
-                format!("{}/{} brokers ready", ready_count, desired),
+                format!("{ready_count}/{desired} brokers ready"),
             )
         } else {
             (
                 CONDITION_FALSE,
                 "BrokersNotReady",
-                format!("{}/{} brokers ready", ready_count, desired),
+                format!("{ready_count}/{desired} brokers ready"),
             )
         };
         set_condition(
@@ -745,7 +745,7 @@ tls:
             (
                 CONDITION_TRUE,
                 "MinimumAvailable",
-                format!("{} broker(s) available", ready_count),
+                format!("{ready_count} broker(s) available"),
             )
         } else {
             (
@@ -769,7 +769,7 @@ tls:
             (
                 CONDITION_TRUE,
                 "ScalingUp",
-                format!("Scaling from {} to {} replicas", ready_count, desired),
+                format!("Scaling from {ready_count} to {desired} replicas"),
             )
         } else {
             (
@@ -793,7 +793,7 @@ tls:
             (
                 CONDITION_TRUE,
                 "PartiallyReady",
-                format!("Only {}/{} brokers ready", ready_count, desired),
+                format!("Only {ready_count}/{desired} brokers ready"),
             )
         } else {
             (CONDITION_FALSE, "Healthy", "Cluster is healthy".to_string())
