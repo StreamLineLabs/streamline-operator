@@ -3,7 +3,7 @@
 [![CI](https://github.com/streamlinelabs/streamline-operator/actions/workflows/ci.yml/badge.svg)](https://github.com/streamlinelabs/streamline-operator/actions/workflows/ci.yml)
 [![codecov](https://img.shields.io/codecov/c/github/streamlinelabs/streamline-operator?style=flat-square)](https://codecov.io/gh/streamlinelabs/streamline-operator)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Rust](https://img.shields.io/badge/Rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.88%2B-orange.svg)](https://www.rust-lang.org/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.26+-326CE5.svg)](https://kubernetes.io/)
 [![Docs](https://img.shields.io/badge/docs-streamlinelabs.dev-brightgreen)](https://streamlinelabs.dev/docs/operations/kubernetes)
 [![Release](https://img.shields.io/github/v/release/streamlinelabs/streamline-operator?label=release)](https://github.com/streamlinelabs/streamline-operator/releases)
@@ -289,7 +289,7 @@ spec:
 
 ### Prerequisites
 
-- Rust 1.85+
+- Rust 1.88+
 - Access to a Kubernetes cluster
 - `kubectl` configured
 
