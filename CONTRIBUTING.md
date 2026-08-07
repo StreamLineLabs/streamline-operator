@@ -6,7 +6,7 @@ Thank you for your interest in contributing! Please review the [organization-wid
 
 ### Prerequisites
 
-- Rust 1.75+ (`rustup update stable`)
+- Rust 1.85+ (`rustup update stable`)
 - Docker (for integration tests)
 - kubectl + a Kubernetes cluster (for e2e tests, [kind](https://kind.sigs.k8s.io/) recommended)
 
