@@ -33,7 +33,11 @@ src/
 └── leader_election.rs   # HA leader lease management
 deploy/
 ├── namespace.yaml       # streamline-system namespace
-└── rbac/                # ServiceAccount, ClusterRole, Binding
+├── operator.yaml        # Deployment — carries an UNPULLABLE placeholder image
+├── crds/                # Generated CRDs; only reconciled kinds are installed
+└── rbac/                # ServiceAccount, namespaced Role, RoleBinding
+overlays/
+└── cloud/               # Opt-in watch-all overlay with split cluster/Lease RBAC
 ```
 
 ## CRD Manifests

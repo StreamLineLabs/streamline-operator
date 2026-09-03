@@ -12,22 +12,27 @@ permissions:
   security-events: write
   contents: read
 
+# Analyze both the Rust operator and its workflow files. Dependency/advisory
+# coverage remains in security.yml via cargo-audit and cargo-deny.
 jobs:
   analyze:
-    name: Analyze
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          - language: actions
+            build-mode: none
     steps:
       - uses: actions/checkout@v4
       - uses: github/codeql-action/init@v3
         with:
-          languages: cpp
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
           queries: +security-extended
-          config: |
-            paths:
-              - src
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build
       - uses: github/codeql-action/analyze@v3
         with:
-          category: /language:cpp
+          category: /language:${{ matrix.language }}

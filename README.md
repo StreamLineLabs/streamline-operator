@@ -148,17 +148,20 @@ status instead of silently doing nothing.
 
 - Kubernetes 1.26+ cluster (kind, minikube, GKE, EKS, AKS)
 - `kubectl` configured with valid kubeconfig
-- [Helm 3.x](https://helm.sh/) (for Helm-based install) or `kubectl` (for manifest-based install)
 
-### Install via Helm (Recommended)
-
-```bash
-helm repo add streamline https://streamlinelabs.github.io/charts
-helm install streamline-operator streamline/streamline-operator \
-  --namespace streamline-system --create-namespace
-```
+> **No Helm chart yet.** A packaged chart is not published; install with the
+> manifests below. `scripts/helm-integration-test.sh` exercises a locally
+> supplied chart and is not a released artifact.
 
 ### Install via Manifests
+
+> **The checked-in `deploy/operator.yaml` does not run.** It points at
+> `ghcr.io/streamlinelabs/streamline-operator:REPLACE_WITH_RELEASED_IMAGE`, a
+> valid reference that no registry serves, so applying it as-is stops at
+> `ImagePullBackOff`. That is deliberate: the manifests track this repository,
+> which is ahead of every published image, and a runnable tag here would
+> silently deploy an **older** operator than the CRDs and RBAC beside it. Supply
+> an image explicitly — ideally by digest.
 
 ```bash
 # Install CRDs first
@@ -167,7 +170,11 @@ kubectl apply -k deploy/crds/
 # Install RBAC and operator
 kubectl apply -f deploy/namespace.yaml
 kubectl apply -f deploy/rbac/
-kubectl apply -f deploy/operator.yaml
+
+# Render a deployable manifest from an explicit, immutable image.
+# Released versions publish this file as `operator.yaml` on the GitHub release.
+make release-manifests IMAGE=ghcr.io/streamlinelabs/streamline-operator@sha256:<digest>
+kubectl apply -f deploy/operator.release.yaml
 ```
 
 With kustomize, set the image in your own overlay instead:

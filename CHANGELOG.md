@@ -100,6 +100,21 @@ hold unreplicated data.
 - `--namespace` is now implemented: a shared `WatchScope` resolves every enabled
   controller's `Api` to `Api::namespaced` or `Api::all`. The flag was previously
   parsed and logged but ignored — all controllers watched the whole cluster.
+- `make release-manifests IMAGE=…` and `make verify-release TAG=… IMAGE=…`,
+  the supported way to turn the checked-in manifests into a deployable one and
+  to check tag/version/image agreement. Tagged releases publish the rendered
+  `operator.yaml` (pinned to the pushed digest) as a release asset.
+- Hermetic test suites `tests/crd_manifests.rs`, `tests/static_manifests.rs`,
+  and `tests/docs_examples.rs` covering CRD drift, RBAC/kustomize/controller
+  alignment, Dockerfile MSRV, probe paths and ordering, release image gating,
+  namespace scope, and validation of every documented YAML example against the
+  generated CRD schemas.
+- `cargo audit` / `cargo deny` workflow and Dependabot coverage for the Docker
+  ecosystem.
+- `validate-cloud-fixture`, an offline binary used by the organization contract
+  workflow to deserialize Cloud-generated CRs and run the real
+  `ClusterSpec::validate()` and `TopicController::unsupported_fields()`
+  acceptance paths.
 
 ### Removed
 - `BranchController`, `ContractController`, and `MemoryController`, and the
@@ -222,12 +237,16 @@ hold unreplicated data.
   `StreamlineCluster`) to `slcon`.
 - Operator RBAC now matches the installed CRDs exactly and holds no Secret
   access.
+- Docker builder image raised from `rust:1.75` to `rust:1.88`, matching the
+  declared MSRV.
+- CodeQL no longer analyses this Rust repository as C++.
 
 ### Fixed
 - `StreamlineCluster` is `Ready` and non-degraded only when the number of ready
   broker pods exactly matches `spec.replicas`. Zero, partial, and excess ready
   counts now report an unhealthy/degraded state instead of using the `Healthy`
   reason.
+- Release CRD generation fails closed instead of skipping with a message.
 - TLS and mTLS CA Secrets are no longer mounted *inside* the read-only ConfigMap
   mount. They now use the sibling paths `/etc/streamline-tls` and
   `/etc/streamline-tls-ca`; a Secret volume nested under another volume's mount
@@ -299,6 +318,12 @@ hold unreplicated data.
   schema descriptions and the README/API tables mark them as not applied, and
   the quick start no longer sets `podAntiAffinity: true`. `spec.nodeSelector` is
   unaffected — it is rendered, and remains the supported placement control.
+- `docs/ENVIRONMENT.md` listed `--generate-crds` and `--generate-crds-dir` as
+  table rows placed *after* two explanatory paragraphs, so Markdown ended the
+  flag table before them and both rendered as literal pipe-delimited text. The
+  rows are back inside the table, and `tests/static_manifests.rs` now fails on
+  any documentation table row separated from its table by prose, plus checks
+  that every operator flag appears in the flag table itself.
 
 
 ## [0.3.0] - 2026-04-20

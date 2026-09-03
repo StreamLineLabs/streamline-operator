@@ -1,4 +1,7 @@
-FROM rust:1.75-slim-bookworm AS builder
+# The builder toolchain must be >= the MSRV declared by `rust-version` in
+# Cargo.toml. `tests/static_manifests.rs` enforces this so the image cannot
+# silently drift behind the crate's minimum supported Rust version again.
+FROM rust:1.88-slim-bookworm AS builder
 
 WORKDIR /build
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
