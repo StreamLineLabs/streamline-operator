@@ -170,10 +170,45 @@ kubectl apply -f deploy/rbac/
 kubectl apply -f deploy/operator.yaml
 ```
 
-> **Note:** The CRD YAMLs in `deploy/crds/` are hand-maintained to match the
-> Rust struct definitions in `src/crd/`. When modifying CRD fields, update both
-> the Rust structs and the corresponding YAML schema. A future release will
-> auto-generate CRDs from the `kube-derive` annotations at build time.
+With kustomize, set the image in your own overlay instead:
+
+```bash
+kustomize edit set image \
+  ghcr.io/streamlinelabs/streamline-operator=ghcr.io/streamlinelabs/streamline-operator@sha256:<digest>
+kubectl apply -k deploy/
+```
+
+For the cluster-wide cloud mode, apply the dedicated overlay after setting the
+same immutable image in that overlay (or in a downstream overlay that imports
+it):
+
+```bash
+(cd overlays/cloud && kustomize edit set image \
+  ghcr.io/streamlinelabs/streamline-operator=ghcr.io/streamlinelabs/streamline-operator@sha256:<digest>)
+kubectl apply -k overlays/cloud/
+```
+
+This is an explicit privilege expansion: reconciliation is cluster-wide, while
+the leader-election Lease remains restricted to `streamline-system`.
+
+> **Note:** The CRD YAMLs in `deploy/crds/` are generated from the
+> `#[kube(...)]` annotations in `src/crd/` — regenerate them with
+> `make generate-crds` (or `streamline-operator --generate-crds`) and never edit
+> them by hand. `cargo test` fails if the checked-in manifests drift from the
+> Rust types, and the release pipeline verifies the same invariant.
+>
+> Only CRDs that a controller reconciles are installed — `StreamlineCluster`,
+> `StreamlineTopic`, and `StreamlineUser`. See
+> [Schema-only CRDs](#schema-only-crds) for the rest.
+
+> **Every example below is in `streamline-system`.** The shipped Deployment
+> passes `--namespace=$(OPERATOR_NAMESPACE)` and `deploy/rbac/` grants a
+> namespaced Role in `streamline-system`, so that is the only namespace the
+> operator watches and the only one it is authorised to read. A custom resource
+> created anywhere else — `default` included — is never reconciled and reports
+> no status at all. To use another namespace, deploy the operator there (the
+> watch follows the Deployment) or opt into cluster-wide mode as described in
+> [Namespace scope and RBAC](#namespace-scope-and-rbac).
 
 ### Deploy a Streamline Cluster
 
@@ -183,7 +218,7 @@ apiVersion: streamline.io/v1alpha1
 kind: StreamlineCluster
 metadata:
   name: my-cluster
-  namespace: default
+  namespace: streamline-system
 spec:
   replicas: 1
   image: ghcr.io/streamlinelabs/streamline:latest
@@ -205,7 +240,7 @@ TLS is off unless `spec.tls` is present, and enabling it requires
 
 ```bash
 kubectl apply -f streamline-cluster.yaml
-kubectl get streamlineclusters
+kubectl get streamlineclusters -n streamline-system
 ```
 
 ### Create a Topic
@@ -216,7 +251,7 @@ apiVersion: streamline.io/v1alpha1
 kind: StreamlineTopic
 metadata:
   name: events
-  namespace: default
+  namespace: streamline-system
 spec:
   clusterRef: my-cluster
   partitions: 6
@@ -225,7 +260,7 @@ spec:
 
 ```bash
 kubectl apply -f my-topic.yaml
-kubectl get streamlinetopics
+kubectl get streamlinetopics -n streamline-system
 ```
 
 > **Only `partitions` is applied.** The Streamline topic API accepts a name and
@@ -245,7 +280,7 @@ apiVersion: streamline.io/v1alpha1
 kind: StreamlineUser
 metadata:
   name: app-producer
-  namespace: default
+  namespace: streamline-system
 spec:
   clusterRef: my-cluster
   authentication:
@@ -267,7 +302,8 @@ spec:
 
 ```bash
 kubectl apply -f app-user.yaml
-kubectl get streamlineusers
+# Reports phase Unsupported — see "User management is not supported".
+kubectl get streamlineusers -n streamline-system
 ```
 
 ## Custom Resource Definitions
@@ -384,14 +420,27 @@ cargo build -p streamline-operator
 ### Run Locally
 
 ```bash
-# Run against your current kubeconfig context
-cargo run -p streamline-operator -- --namespace default
+# Watch a single namespace (what the shipped Deployment does, and the
+# namespace every example in this README uses)
+cargo run -p streamline-operator -- --namespace streamline-system
+
+# Watch every namespace when running outside the manifests. The packaged form
+# is overlays/cloud/, which supplies the matching cluster-wide RBAC.
+cargo run -p streamline-operator -- --namespace=
 
 # With leader election (for HA deployments)
 cargo run -p streamline-operator -- --leader-election
 
-# Custom metrics/health ports
-cargo run -p streamline-operator -- --metrics-port 8080 --health-port 8081
+# Custom metrics/health bind addresses
+cargo run -p streamline-operator -- \
+  --metrics-bind-address 0.0.0.0:8080 \
+  --health-probe-bind-address 0.0.0.0:8081
+
+# Print the CRD manifests (no cluster required)
+cargo run -p streamline-operator -- --generate-crds
+
+# Regenerate deploy/crds/ from the Rust types
+make generate-crds
 ```
 
 ### Test
@@ -442,7 +491,16 @@ cargo clippy --all-targets -- -D warnings
 | Endpoint | Port | Description |
 |----------|------|-------------|
 | `/metrics` | 8080 | Prometheus metrics |
-| `/healthz` | 8081 | Health probe |
+| `/healthz` | 8081 | Liveness probe — `200` while the process runs |
+| `/readyz` | 8081 | Readiness probe — `200` once this operator process is initialised, **including a leader-election standby** |
+| `/leaderz` | 8081 | `200` only on the replica currently holding the leader Lease; `503` on standbys |
+
+`/readyz` deliberately does **not** mean "this replica is the leader". A
+standby is a healthy operator waiting for the Lease, and failing its readiness
+probe would deadlock a rolling update of an HA Deployment: the new pod waits for
+the lease the outgoing pod still holds, while the rollout waits for the new pod
+to become ready. Use `/leaderz` — or the `streamline_operator_leader` gauge,
+which is `1` on exactly one replica — to find or alert on the active operator.
 
 ## Project Layout
 
@@ -454,7 +512,9 @@ streamline-operator/
 │   ├── controllers/      # Reconciliation logic
 │   │   ├── cluster.rs    # StreamlineCluster → StatefulSet, Service, ConfigMap
 │   │   ├── topic.rs      # StreamlineTopic → API calls to Streamline
-│   │   └── user.rs       # StreamlineUser → Secrets, credentials
+│   │   └── user.rs       # StreamlineUser → status only (unsupported)
+│   ├── health.rs         # /healthz, /readyz, /leaderz
+│   ├── upgrade.rs        # v0.3.0 legacy defaults: rejection messages + patches
 │   ├── crd/              # CRD type definitions (v1alpha1)
 │   │   ├── cluster.rs
 │   │   ├── topic.rs
@@ -462,7 +522,16 @@ streamline-operator/
 │   └── error.rs          # Error types
 ├── deploy/               # Kubernetes manifests
 │   ├── namespace.yaml    # streamline-system namespace
-│   └── rbac/             # ServiceAccount, ClusterRole, Binding
+│   ├── crds/             # Generated CRDs (only reconciled kinds installed)
+│   ├── operator.yaml     # Deployment (unpullable placeholder image)
+│   └── rbac/             # ServiceAccount, namespaced Role, RoleBinding
+├── overlays/
+│   └── cloud/            # Opt-in watch-all deployment and cluster-wide RBAC
+├── docs/
+│   ├── UPGRADING.md      # v0.3.0 → current: required kubectl patches
+│   ├── API.md            # CRD field reference
+│   ├── ENVIRONMENT.md    # Flags and environment variables
+│   └── TROUBLESHOOTING.md
 ├── scripts/              # Build & utility scripts
 ├── Cargo.toml
 ├── Makefile
@@ -496,21 +565,25 @@ kubectl logs -n streamline-system deployment/streamline-operator
 # Verify CRDs are installed
 kubectl get crd | grep streamline
 
-# Check RBAC permissions
-kubectl auth can-i list streamlineclusters --as=system:serviceaccount:streamline-system:streamline-operator
+# Check RBAC permissions (namespaced by default)
+kubectl auth can-i list streamlineclusters \
+  --as=system:serviceaccount:streamline-system:streamline-operator \
+  -n streamline-system
 ```
 
 ### Cluster stuck in Pending
 
 ```bash
 # Check cluster status
-kubectl describe streamlinecluster my-cluster
+kubectl describe streamlinecluster my-cluster -n streamline-system
 
 # Check StatefulSet status
-kubectl get statefulset -l app.kubernetes.io/managed-by=streamline-operator
+kubectl get statefulset -n streamline-system \
+  -l app.kubernetes.io/managed-by=streamline-operator
 
 # Check PVC binding
-kubectl get pvc -l app.kubernetes.io/instance=my-cluster
+kubectl get pvc -n streamline-system \
+  -l app.kubernetes.io/instance=my-cluster
 ```
 
 ### Topic not becoming Ready
@@ -521,10 +594,11 @@ apply — remove it (see "Create a Topic").
 
 ```bash
 # Check topic status and conditions
-kubectl describe streamlinetopic events
+kubectl describe streamlinetopic events -n streamline-system
 
 # Verify the parent cluster is running
-kubectl get streamlinecluster my-cluster -o jsonpath='{.status.phase}'
+kubectl get streamlinecluster my-cluster -n streamline-system \
+  -o jsonpath='{.status.phase}'
 ```
 
 ## Contributing

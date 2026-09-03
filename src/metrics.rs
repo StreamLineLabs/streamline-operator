@@ -25,6 +25,12 @@ pub struct OperatorMetrics {
     pub reconcile_topic_errors: AtomicU64,
     pub reconcile_user_errors: AtomicU64,
     pub leader_transitions: AtomicU64,
+    /// 1 while this replica holds the leader Lease, 0 while it is a standby.
+    ///
+    /// Exposed as a gauge because readiness (`/readyz`) no longer implies
+    /// leadership: alerting on "exactly one active operator" needs a signal
+    /// that distinguishes the leader from a healthy standby.
+    leader: AtomicU64,
     duration_buckets: Mutex<DurationHistogram>,
 }
 
@@ -41,6 +47,7 @@ impl OperatorMetrics {
             reconcile_topic_errors: AtomicU64::new(0),
             reconcile_user_errors: AtomicU64::new(0),
             leader_transitions: AtomicU64::new(0),
+            leader: AtomicU64::new(0),
             duration_buckets: Mutex::new(DurationHistogram::new()),
         }
     }
@@ -84,6 +91,16 @@ impl OperatorMetrics {
 
     pub fn inc_leader_transition(&self) {
         self.leader_transitions.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Set the leadership gauge. `true` while this replica holds the Lease.
+    pub fn set_leader(&self, leader: bool) {
+        self.leader.store(u64::from(leader), Ordering::Relaxed);
+    }
+
+    /// Whether the leadership gauge currently reads "leader".
+    pub fn is_leader(&self) -> bool {
+        self.leader.load(Ordering::Relaxed) == 1
     }
 
     /// Record a reconciliation duration in milliseconds.
@@ -185,6 +202,17 @@ impl OperatorMetrics {
             "streamline_operator_leader_transitions_total",
             &[],
             self.leader_transitions.load(Ordering::Relaxed),
+        );
+
+        out.push_str(
+            "# HELP streamline_operator_leader 1 if this replica holds the leader Lease, else 0\n",
+        );
+        out.push_str("# TYPE streamline_operator_leader gauge\n");
+        push_counter(
+            &mut out,
+            "streamline_operator_leader",
+            &[],
+            self.leader.load(Ordering::Relaxed),
         );
 
         // Duration histogram
@@ -334,6 +362,24 @@ mod tests {
         m.inc_leader_transition();
         m.inc_leader_transition();
         assert_eq!(m.leader_transitions.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn leader_gauge_tracks_lease_state_and_is_rendered() {
+        let m = OperatorMetrics::new();
+        assert!(!m.is_leader(), "a fresh replica is a standby");
+        assert!(m.render().contains("streamline_operator_leader 0"));
+
+        m.set_leader(true);
+        assert!(m.is_leader());
+        assert!(m.render().contains("streamline_operator_leader 1"));
+        assert!(m
+            .render()
+            .contains("# TYPE streamline_operator_leader gauge"));
+
+        m.set_leader(false);
+        assert!(!m.is_leader());
+        assert!(m.render().contains("streamline_operator_leader 0"));
     }
 
     #[test]

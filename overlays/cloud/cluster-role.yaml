@@ -1,0 +1,65 @@
+# Cluster-wide reconciliation permissions for the opt-in cloud overlay.
+#
+# This is the default Role's rule set minus Leases. The operator needs these
+# permissions in every tenant namespace, but it does not need Secrets,
+# Namespaces, Nodes, CRDs, or access to unsupported Streamline kinds.
+# Leader-election access stays namespaced in leader-election-role.yaml.
+# User-authored Streamline CRs are watched and patched for finalizers; the
+# operator never creates, replaces, or deletes the main resources.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: streamline-operator-cloud
+  labels:
+    app.kubernetes.io/name: streamline-operator
+    app.kubernetes.io/part-of: streamline
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups: ["streamline.io"]
+    resources:
+      - streamlineclusters
+      - streamlinetopics
+      - streamlineusers
+    verbs: ["get", "list", "watch", "patch"]
+
+  - apiGroups: ["streamline.io"]
+    resources:
+      - streamlineclusters/status
+      - streamlinetopics/status
+      - streamlineusers/status
+    verbs: ["patch"]
+
+  - apiGroups: ["streamline.io"]
+    resources:
+      - streamlineclusters/finalizers
+      - streamlinetopics/finalizers
+      - streamlineusers/finalizers
+    verbs: ["update"]
+
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "delete"]
+
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

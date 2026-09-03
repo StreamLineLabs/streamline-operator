@@ -31,11 +31,17 @@
 //!
 //! ## Example
 //!
+//! Both examples are namespaced into `streamline-system`: the shipped
+//! Deployment passes `--namespace=$(OPERATOR_NAMESPACE)` and `deploy/rbac/`
+//! grants a namespaced Role there, so a resource in any other namespace is
+//! never watched and never reconciled.
+//!
 //! ```yaml
 //! apiVersion: streamline.io/v1alpha1
 //! kind: StreamlineCluster
 //! metadata:
 //!   name: my-cluster
+//!   namespace: streamline-system
 //! spec:
 //!   replicas: 1
 //!   storage:
@@ -61,6 +67,7 @@ pub mod conditions;
 pub mod controllers;
 pub mod crd;
 pub mod error;
+pub mod health;
 pub mod leader_election;
 pub mod metrics;
 pub mod upgrade;

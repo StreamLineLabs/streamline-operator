@@ -7,8 +7,8 @@ resources:
   - namespace.yaml
   - crds/
   - rbac/service-account.yaml
-  - rbac/cluster-role.yaml
-  - rbac/cluster-role-binding.yaml
+  - rbac/role.yaml
+  - rbac/role-binding.yaml
   - operator.yaml
 
 commonLabels:

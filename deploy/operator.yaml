@@ -36,8 +36,15 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - --leader-elect
-            - --metrics-bind-address=:8080
-            - --health-probe-bind-address=:8081
+            # Watch only the namespace the operator runs in. This matches the
+            # namespaced Role/RoleBinding in deploy/rbac; cluster-wide mode
+            # (`--namespace=`) is packaged separately in overlays/cloud/.
+            # Kubernetes expands $(VAR) in args from the container's env.
+            - --namespace=$(OPERATOR_NAMESPACE)
+            # Must be a full socket address: ":8080" does not parse and left
+            # both auxiliary servers unbound, so the probes never answered.
+            - --metrics-bind-address=0.0.0.0:8080
+            - --health-probe-bind-address=0.0.0.0:8081
           ports:
             - name: metrics
               containerPort: 8080
@@ -76,6 +83,12 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 5
+          # /readyz means "this operator process is healthy", which includes a
+          # leader-election standby waiting for the Lease. Gating readiness on
+          # leadership deadlocks rolling updates: the new pod would wait for
+          # the lease the outgoing pod still holds, while the rollout waits for
+          # the new pod to be ready. Use /leaderz (or the
+          # `streamline_operator_leader` gauge) to find the active replica.
           readinessProbe:
             httpGet:
               path: /readyz

@@ -92,6 +92,14 @@ hold unreplicated data.
   `make generate-crds`). `deploy/crds/*.yaml` is now generated from the
   `#[kube(...)]` annotations instead of hand-maintained, and `cargo test`, CI,
   and the release pipeline all fail if the two drift.
+- `/readyz` reports `503` until the operator process is initialised
+  (`src/health.rs`); it previously returned a hardcoded `ok`.
+- `/leaderz` endpoint and a `streamline_operator_leader` gauge reporting which
+  replica holds the leader Lease, so leadership can be observed without
+  conflating it with readiness.
+- `--namespace` is now implemented: a shared `WatchScope` resolves every enabled
+  controller's `Api` to `Api::namespaced` or `Api::all`. The flag was previously
+  parsed and logged but ignored — all controllers watched the whole cluster.
 
 ### Removed
 - `BranchController`, `ContractController`, and `MemoryController`, and the
@@ -106,8 +114,24 @@ hold unreplicated data.
   each pass. The CRD types and generated schemas remain as schema-only
   references with the reason recorded in `Reconciliation::None(..)`; tests fail
   if one is re-enabled without changing that metadata.
+- Secret `get`/`list`/`watch` from the operator's RBAC. The operator never calls
+  the Secret API: TLS material is mounted through a `SecretVolumeSource` read by
+  the kubelet, and no credentials are provisioned. The grant only widened the
+  blast radius of a compromised operator. A static test fails if any shipped
+  role mentions `secrets`.
+- The `namespaces` RBAC rule: it is cluster-scoped, ungrantable by a Role, and
+  unnecessary — the operator reads its own namespace from the projected service
+  account token.
 
 ### Changed
+- The opt-in cloud overlay labels `streamline-system` with
+  `streamline.io/control-plane=true`, matching the namespace selector in
+  Streamline Cloud's tenant NetworkPolicy so the cluster-wide topic controller
+  can reach the private broker HTTP API on port 9094.
+- Streamline CR RBAC is now limited to `get/list/watch/patch` on main resources,
+  `patch` on status, and `update` on finalizers. The operator no longer receives
+  create, replace, or delete authority over user-authored CRs, and static tests
+  require the namespaced Role and cloud ClusterRole to remain identical.
 - Rejections of the three 0.3.0 defaults now explain the upgrade instead of only
   refusing. `ClusterSpec::validate` (`spec.replicas`, `spec.podAntiAffinity`)
   and the topic gate (`spec.replicationFactor`) append the value to set, the
@@ -117,6 +141,23 @@ hold unreplicated data.
   A deliberately hand-written value (`replicas: 5`) gets the remediation without
   the upgrade provenance, because it did not come from one. The rejections
   themselves are unchanged — still fail-closed, still no auto-mutation.
+- `deploy/operator.yaml` and `deploy/kustomization.yaml` no longer run a
+  released operator image. The Deployment carries
+  `ghcr.io/streamlinelabs/streamline-operator:REPLACE_WITH_RELEASED_IMAGE` with
+  `imagePullPolicy: Always`, and the kustomize `images:`/`newTag` override was
+  removed. The previous `:0.3.0` pin predates this tree, so applying the
+  manifests silently ran an **older** operator than the CRDs and RBAC beside
+  them; the default now fails closed at `ImagePullBackOff`. Static tests reject
+  any runnable operator tag in the repository, and the release workflow
+  substitutes the digest it just pushed after checking tag/version/label
+  agreement.
+- The shipped RBAC is a namespaced `Role`/`RoleBinding`
+  (`deploy/rbac/role.yaml`, `role-binding.yaml`) instead of a `ClusterRole` and
+  `ClusterRoleBinding`, and the Deployment passes
+  `--namespace=$(OPERATOR_NAMESPACE)`. The default remains namespace-scoped;
+  `overlays/cloud/` is the explicit cluster-wide mode, with reconciliation
+  permissions in a least-privilege `ClusterRole` and leader-election Lease
+  access kept in a namespaced `Role`.
 - Topic settings the Streamline server does not apply are rejected before any
   API call. The topic API deserialises `POST /api/v1/topics` into
   `{ name, partitions }`, so the operator no longer sends retention, cleanup
@@ -154,6 +195,13 @@ hold unreplicated data.
   settings (`insecureSkipVerify`, `mtlsEnabled` without `caSecretName`, TLS
   without `secretName`) are rejected with an `InvalidSpec` status instead of
   being silently ignored.
+- Readiness and leadership are separate state. The process is marked ready once
+  the Kubernetes client and probe server exist, **before** it blocks on the
+  leader Lease, so a standby replica passes `/readyz`. Gating readiness on
+  leadership deadlocked rolling updates of an HA Deployment under the shipped
+  `maxUnavailable: 1`: the new pod waited for the lease the outgoing pod still
+  held, while the rollout waited for the new pod to become ready. Deployment
+  readiness stays on `/readyz`; the active replica is identified by `/leaderz`.
 - Enabling `spec.autoscaling` is rejected until clustered broker bootstrap is
   implemented; an HPA can no longer bypass the single-replica safety boundary.
 - Unchanged `StreamlineUser` unsupported statuses are no longer patched on
@@ -172,6 +220,8 @@ hold unreplicated data.
   credentials Secret the cluster never learns about.
 - `StreamlineContract` short name changed from `slc` (which collided with
   `StreamlineCluster`) to `slcon`.
+- Operator RBAC now matches the installed CRDs exactly and holds no Secret
+  access.
 
 ### Fixed
 - `StreamlineCluster` is `Ready` and non-degraded only when the number of ready
@@ -197,6 +247,20 @@ hold unreplicated data.
   the StatefulSet into multiple independent standalone brokers — the split-brain
   the rejection exists to prevent. Cleanup runs before the validation early
   return; the single-replica and autoscaling rejections themselves are unchanged.
+- Every documented custom resource example now sets
+  `metadata.namespace: streamline-system`, the namespace the shipped Deployment
+  actually watches. The quick start in `README.md`, `docs/API.md`, and the crate
+  docs created resources in `default` (or in whatever namespace `kubectl`
+  defaulted to), while `deploy/operator.yaml` passes
+  `--namespace=$(OPERATOR_NAMESPACE)` and `deploy/rbac/` grants a namespaced
+  `Role` in `streamline-system`. Following the documentation therefore produced
+  a resource the API server accepted and the operator never saw: no status, no
+  events, no error. `tests/docs_examples.rs` now derives the watched namespace
+  from `deploy/operator.yaml` (resolving `$(OPERATOR_NAMESPACE)` through the
+  downward-API env binding to the Deployment's namespace), cross-checks it
+  against the shipped `Role`, `RoleBinding`, `ServiceAccount`, and
+  `namespace.yaml`, and fails on any documented example whose namespace differs
+  or is missing.
 - `spec.retention.retentionMs` now defaults to `-1` (unlimited) instead of
   `604800000` (7 days), matching `retentionBytes` and what the broker actually
   does. The core topic API accepts only `{name, partitions}` and applies no
