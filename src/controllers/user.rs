@@ -1,48 +1,62 @@
 //! User Controller
 //!
-//! Reconciles StreamlineUser custom resources to create and manage
-//! users and their credentials within Streamline clusters.
+//! Watches StreamlineUser custom resources and reports, explicitly, that user
+//! management is not supported.
+//!
+//! The Streamline server exposes no user-management API (`/api/v1/users` does
+//! not exist), so there is nothing for this controller to create. Earlier
+//! versions POSTed to that endpoint and provisioned a Kubernetes Secret with a
+//! generated password, which made a `StreamlineUser` look `Ready` while the
+//! cluster knew nothing about the user and the credentials in the Secret were
+//! never honoured. The controller now fails closed: it publishes an
+//! `Unsupported` status and provisions nothing.
 
 use crate::conditions::{
-    build_condition, set_condition, CONDITION_FALSE, CONDITION_TRUE,
+    build_condition, set_condition, ConditionFields, CONDITION_FALSE,
     USER_CONDITION_CREDENTIALS_READY, USER_CONDITION_READY, USER_FINALIZER,
 };
-use crate::controllers::error_policy_backoff;
-use crate::crd::{StreamlineCluster, StreamlineUser, UserPhase, UserStatus};
+use crate::controllers::{error_policy_backoff, WatchScope};
+use crate::crd::{StreamlineUser, UserPhase, UserStatus};
 use crate::error::{OperatorError, Result};
 use chrono::Utc;
 use futures::StreamExt;
-use k8s_openapi::api::core::v1::Secret;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-use kube::api::{Api, Patch, PatchParams, PostParams};
+use kube::api::{Api, Patch, PatchParams};
 use kube::runtime::controller::{Action, Controller};
 use kube::runtime::watcher::Config;
-use kube::{Client, Resource, ResourceExt};
-use std::collections::BTreeMap;
+use kube::{Client, ResourceExt};
 use std::sync::Arc;
-use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
+
+/// Condition reason published on every StreamlineUser.
+const UNSUPPORTED_REASON: &str = "UnsupportedByServer";
+
+/// Condition/status message published on every StreamlineUser.
+const UNSUPPORTED_MESSAGE: &str = "User management is not supported: the Streamline server \
+     exposes no user API, so this operator does not create users, credentials, ACLs, or quotas";
 
 /// Context for the user controller
 pub struct UserController {
     client: Client,
-    http_client: reqwest::Client,
+    scope: WatchScope,
 }
 
 impl UserController {
-    /// Create a new user controller
-    pub fn new(client: Client, http_client: reqwest::Client) -> Self {
-        Self {
-            client,
-            http_client,
-        }
+    /// Create a new user controller watching `scope`.
+    ///
+    /// The HTTP client argument is retained for signature stability; no
+    /// Streamline API calls are made for users.
+    pub fn new(client: Client, _http_client: reqwest::Client, scope: WatchScope) -> Self {
+        Self { client, scope }
     }
 
     /// Run the user controller
     pub async fn run(self: Arc<Self>) -> Result<()> {
-        let users: Api<StreamlineUser> = Api::all(self.client.clone());
+        let users: Api<StreamlineUser> = self.scope.api(self.client.clone());
 
-        info!("Starting StreamlineUser controller");
+        info!(
+            "Starting StreamlineUser controller (watching {})",
+            self.scope.describe()
+        );
 
         Controller::new(users, Config::default())
             .shutdown_on_signal()
@@ -70,7 +84,15 @@ impl UserController {
         Ok(())
     }
 
-    /// Reconcile a StreamlineUser
+    /// Reconcile a StreamlineUser.
+    ///
+    /// User management is **not implemented by the Streamline server**: there is
+    /// no `/api/v1/users` endpoint to call, and provisioning a Kubernetes Secret
+    /// with a generated password would imply credentials the cluster never
+    /// learns about. Rather than silently doing nothing (or reporting `Ready`
+    /// for a user that does not exist), the controller publishes an explicit
+    /// `Unsupported` status and clears any finalizer left by earlier versions so
+    /// deletion is never blocked.
     async fn reconcile(
         &self,
         user: Arc<StreamlineUser>,
@@ -82,509 +104,243 @@ impl UserController {
 
         info!("Reconciling StreamlineUser {}/{}", namespace, name);
 
-        // Handle deletion with finalizer
+        // Drop any finalizer this operator previously added: nothing is created
+        // for a StreamlineUser, so there is nothing to clean up.
+        self.remove_finalizer_if_present(&user, &namespace).await?;
+
         if user.metadata.deletion_timestamp.is_some() {
-            return self.handle_deletion(&user, &namespace).await;
-        }
-
-        // Ensure finalizer is set
-        self.ensure_finalizer(&user, &namespace).await?;
-
-        // Get the referenced cluster
-        let clusters: Api<StreamlineCluster> = Api::namespaced(self.client.clone(), &namespace);
-        let cluster = match clusters.get(&user.spec.cluster_ref).await {
-            Ok(c) => c,
-            Err(e) => {
-                warn!(
-                    "Cluster {} not found for user {}: {}",
-                    user.spec.cluster_ref, name, e
-                );
-                self.update_status_error(
-                    &user,
-                    &namespace,
-                    &format!("Cluster {} not found", user.spec.cluster_ref),
-                )
-                .await?;
-                return Ok(Action::requeue(Duration::from_secs(30)));
-            }
-        };
-
-        // Check if cluster is ready
-        let cluster_ready = cluster
-            .status
-            .as_ref()
-            .is_some_and(|s| s.ready_replicas > 0 && !s.broker_endpoints.is_empty());
-
-        if !cluster_ready {
-            warn!(
-                "Cluster {} not ready for user {}",
-                user.spec.cluster_ref, name
+            info!(
+                "StreamlineUser {}/{} is being deleted; no server-side cleanup is required",
+                namespace, name
             );
-            self.update_status_pending(&user, &namespace, "Waiting for cluster to be ready")
-                .await?;
-            return Ok(Action::requeue(Duration::from_secs(10)));
+            return Ok(Action::await_change());
         }
 
-        // Create/update credentials secret if needed
-        let credentials_secret = self.reconcile_credentials_secret(&user, &namespace).await?;
-
-        // Create/update user in Streamline cluster
-        match self
-            .create_or_update_user(&user, &cluster, &credentials_secret)
-            .await
-        {
-            Ok(_) => {
-                self.update_status_ready(&user, &namespace, &credentials_secret)
-                    .await?;
-            }
-            Err(e) => {
-                error!("Failed to create/update user {}: {}", name, e);
-                self.update_status_error(&user, &namespace, &e.to_string())
-                    .await?;
-                return Ok(Action::requeue(Duration::from_secs(30)));
-            }
-        }
+        self.update_status_unsupported(&user, &namespace).await?;
 
         crate::metrics::get().inc_success();
-        Ok(Action::requeue(Duration::from_secs(60)))
+        // Only a spec/CRD change can alter the outcome.
+        Ok(Action::await_change())
     }
 
-    /// Ensure the finalizer is present on the resource
-    async fn ensure_finalizer(&self, user: &StreamlineUser, namespace: &str) -> Result<()> {
-        let finalizers = user.metadata.finalizers.as_deref().unwrap_or_default();
-        if finalizers.contains(&USER_FINALIZER.to_string()) {
-            return Ok(());
-        }
-
-        let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
-        let patch = serde_json::json!({
-            "metadata": {
-                "finalizers": [USER_FINALIZER]
-            }
-        });
-        users
-            .patch(
-                &user.name_any(),
-                &PatchParams::apply("streamline-operator").force(),
-                &Patch::Apply(&patch),
-            )
-            .await
-            .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
-
-        Ok(())
-    }
-
-    /// Handle deletion: revoke credentials from Streamline server, then remove finalizer
-    async fn handle_deletion(
+    /// Remove this operator's finalizer from a user if it is still present.
+    async fn remove_finalizer_if_present(
         &self,
         user: &StreamlineUser,
         namespace: &str,
-    ) -> std::result::Result<Action, OperatorError> {
-        let name = user.name_any();
-        info!("Handling deletion of StreamlineUser {}/{}", namespace, name);
-
-        // Attempt to revoke user credentials from the Streamline cluster
-        let clusters: Api<StreamlineCluster> = Api::namespaced(self.client.clone(), namespace);
-        if let Ok(cluster) = clusters.get(&user.spec.cluster_ref).await {
-            let cluster_name = cluster.name_any();
-            let http_endpoint = format!(
-                "http://{}-0.{}-headless.{}.svc:{}",
-                cluster_name, cluster_name, namespace, cluster.spec.http_port
-            );
-            info!(
-                "Revoking credentials for user {} from cluster at {}",
-                name, http_endpoint
-            );
-            if let Err(e) = self
-                .http_client
-                .delete(format!("{http_endpoint}/api/v1/users/{name}"))
-                .send()
-                .await
-            {
-                warn!("Failed to revoke user from cluster API: {}", e);
-            }
-        } else {
-            warn!(
-                "Cluster {} not found during user deletion, skipping credential revocation",
-                user.spec.cluster_ref
-            );
+    ) -> Result<()> {
+        let existing = user.metadata.finalizers.as_deref().unwrap_or_default();
+        if !existing.iter().any(|f| f == USER_FINALIZER) {
+            return Ok(());
         }
 
-        // Remove finalizer
+        let name = user.name_any();
         let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
-        let finalizers: Vec<String> = user
-            .metadata
-            .finalizers
-            .as_deref()
-            .unwrap_or_default()
+        let remaining: Vec<String> = existing
             .iter()
             .filter(|f| f.as_str() != USER_FINALIZER)
             .cloned()
             .collect();
 
-        let patch = serde_json::json!({
-            "metadata": {
-                "finalizers": finalizers
-            }
-        });
+        let patch = serde_json::json!({ "metadata": { "finalizers": remaining } });
         users
             .patch(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
         info!(
-            "Finalizer removed for StreamlineUser {}/{}",
+            "Removed stale finalizer from StreamlineUser {}/{}",
             namespace, name
         );
-        Ok(Action::await_change())
+        Ok(())
     }
 
-    /// Reconcile credentials secret
-    async fn reconcile_credentials_secret(
+    /// Publish the `Unsupported` status for a user.
+    async fn update_status_unsupported(
         &self,
         user: &StreamlineUser,
         namespace: &str,
-    ) -> Result<String> {
-        let secret_name = format!("{}-credentials", user.name_any());
-        let secrets: Api<Secret> = Api::namespaced(self.client.clone(), namespace);
+    ) -> Result<()> {
+        let name = user.name_any();
+        let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
 
-        // Check if secret already exists
-        if secrets.get(&secret_name).await.is_ok() {
-            return Ok(secret_name);
+        let status = Self::unsupported_status(user);
+        if user.status.as_ref() == Some(&status) {
+            return Ok(());
         }
 
-        // Check if password is provided in spec
-        let password = if let Some(creds) = &user.spec.authentication.credentials {
-            if let Some(value) = &creds.value {
-                value.clone()
-            } else if let Some(secret_ref) = &creds.secret_ref {
-                // Fetch password from referenced secret
-                let ref_secret = secrets.get(&secret_ref.name).await.map_err(|e| {
-                    OperatorError::KubeApi(format!(
-                        "Failed to get secret {}: {}",
-                        secret_ref.name, e
-                    ))
-                })?;
-
-                let data = ref_secret.data.ok_or_else(|| {
-                    OperatorError::Configuration("Referenced secret has no data".to_string())
-                })?;
-
-                let password_bytes = data.get(&secret_ref.key).ok_or_else(|| {
-                    OperatorError::Configuration(format!(
-                        "Key {} not found in secret",
-                        secret_ref.key
-                    ))
-                })?;
-
-                String::from_utf8(password_bytes.0.clone()).map_err(|e| {
-                    OperatorError::Configuration(format!("Invalid password encoding: {e}"))
-                })?
-            } else {
-                // Generate random password
-                self.generate_random_password()
-            }
-        } else {
-            // Generate random password
-            self.generate_random_password()
-        };
-
-        // Create owner reference
-        let owner_ref = OwnerReference {
-            api_version: StreamlineUser::api_version(&()).to_string(),
-            kind: StreamlineUser::kind(&()).to_string(),
-            name: user.name_any(),
-            uid: user.metadata.uid.clone().unwrap_or_default(),
-            controller: Some(true),
-            block_owner_deletion: Some(true),
-        };
-
-        // Create the credentials secret
-        let mut labels = BTreeMap::new();
-        labels.insert(
-            "app.kubernetes.io/name".to_string(),
-            "streamline".to_string(),
-        );
-        labels.insert(
-            "app.kubernetes.io/managed-by".to_string(),
-            "streamline-operator".to_string(),
-        );
-        labels.insert("streamline.io/user".to_string(), user.name_any());
-
-        let mut string_data = BTreeMap::new();
-        string_data.insert("username".to_string(), user.name_any());
-        string_data.insert("password".to_string(), password);
-
-        let secret = Secret {
-            metadata: ObjectMeta {
-                name: Some(secret_name.clone()),
-                namespace: Some(namespace.to_string()),
-                labels: Some(labels),
-                owner_references: Some(vec![owner_ref]),
-                ..Default::default()
-            },
-            string_data: Some(string_data),
-            type_: Some("Opaque".to_string()),
-            ..Default::default()
-        };
-
-        secrets
-            .create(&PostParams::default(), &secret)
+        let patch = serde_json::json!({ "status": status });
+        users
+            .patch_status(&name, &PatchParams::default(), &Patch::Merge(&patch))
             .await
             .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
 
-        Ok(secret_name)
+        Ok(())
     }
 
-    /// Generate a random password
-    fn generate_random_password(&self) -> String {
-        use rand::Rng;
-        use std::iter;
-
-        const CHARSET: &[u8] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-        let mut rng = rand::thread_rng();
-        let password: String = iter::repeat(())
-            .map(|()| {
-                let idx = rng.gen_range(0..CHARSET.len());
-                CHARSET[idx] as char
+    /// Build the `Unsupported` status object.
+    fn unsupported_status(user: &StreamlineUser) -> UserStatus {
+        // Seed the condition helper from the current status so an unchanged
+        // condition keeps its transition timestamp. Status-only watch events
+        // can then produce a byte-for-byte identical desired status and skip
+        // the API patch instead of triggering an unbounded reconcile loop.
+        let mut cond_fields: Vec<ConditionFields> = user
+            .status
+            .as_ref()
+            .map(|status| {
+                status
+                    .conditions
+                    .iter()
+                    .filter(|condition| {
+                        condition.r#type == USER_CONDITION_READY
+                            || condition.r#type == USER_CONDITION_CREDENTIALS_READY
+                    })
+                    .map(|condition| ConditionFields {
+                        condition_type: condition.r#type.clone(),
+                        status: condition.status.clone(),
+                        last_transition_time: condition.last_transition_time.clone(),
+                        reason: condition.reason.clone(),
+                        message: condition.message.clone(),
+                    })
+                    .collect()
             })
-            .take(24)
-            .collect();
-        password
-    }
-
-    /// Create or update a user in the Streamline cluster
-    async fn create_or_update_user(
-        &self,
-        user: &StreamlineUser,
-        cluster: &StreamlineCluster,
-        _credentials_secret: &str,
-    ) -> Result<()> {
-        let namespace = cluster.namespace().unwrap_or_else(|| "default".to_string());
-        let cluster_name = cluster.name_any();
-
-        // Build the Streamline HTTP API endpoint
-        let http_endpoint = format!(
-            "http://{}-0.{}-headless.{}.svc:{}",
-            cluster_name, cluster_name, namespace, cluster.spec.http_port
+            .unwrap_or_default();
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_READY,
+                CONDITION_FALSE,
+                UNSUPPORTED_REASON,
+                UNSUPPORTED_MESSAGE,
+            ),
+        );
+        set_condition(
+            &mut cond_fields,
+            build_condition(
+                USER_CONDITION_CREDENTIALS_READY,
+                CONDITION_FALSE,
+                UNSUPPORTED_REASON,
+                "No credentials Secret is provisioned: the server cannot be told about \
+                 credentials, so generating them would be misleading",
+            ),
         );
 
-        // Build user configuration
-        let user_config = serde_json::json!({
-            "username": user.name_any(),
-            "authentication": {
-                "type": user.spec.authentication.r#type,
-            },
-            "authorization": {
-                "type": user.spec.authorization.r#type,
-                "acls": user.spec.authorization.acls,
-                "roles": user.spec.authorization.roles,
-            },
-            "quotas": user.spec.quotas,
+        let mut status = UserStatus {
+            ready: false,
+            phase: UserPhase::Unsupported,
+            username: None,
+            credentials_secret: None,
+            conditions: cond_fields
+                .into_iter()
+                .map(|c| c.into_user_condition())
+                .collect(),
+            observed_generation: user.metadata.generation,
+            last_updated: None,
+            error_message: Some(UNSUPPORTED_MESSAGE.to_string()),
+        };
+
+        let semantic_change = user.status.as_ref().is_none_or(|current| {
+            let mut comparable = current.clone();
+            comparable.last_updated = None;
+            comparable != status
         });
-
-        info!(
-            "Creating/updating user {} at {}",
-            user.name_any(),
-            http_endpoint,
-        );
-
-        let response = self
-            .http_client
-            .post(format!("{http_endpoint}/api/v1/users"))
-            .json(&user_config)
-            .send()
-            .await
-            .map_err(|e| {
-                OperatorError::Internal(format!(
-                    "HTTP request to create user {} failed: {}",
-                    user.name_any(),
-                    e
-                ))
-            })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            if status.as_u16() != 409 {
-                return Err(OperatorError::Internal(format!(
-                    "Failed to create user {} (HTTP {}): {}",
-                    user.name_any(),
-                    status,
-                    body
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Update status to ready with Ready and CredentialsReady conditions
-    async fn update_status_ready(
-        &self,
-        user: &StreamlineUser,
-        namespace: &str,
-        credentials_secret: &str,
-    ) -> Result<()> {
-        let name = user.name_any();
-        let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
-
-        let mut cond_fields = Vec::new();
-        set_condition(
-            &mut cond_fields,
-            build_condition(
-                USER_CONDITION_READY,
-                CONDITION_TRUE,
-                "UserReady",
-                "User successfully created/updated",
-            ),
-        );
-        set_condition(
-            &mut cond_fields,
-            build_condition(
-                USER_CONDITION_CREDENTIALS_READY,
-                CONDITION_TRUE,
-                "CredentialsProvisioned",
-                &format!("Credentials stored in secret {credentials_secret}"),
-            ),
-        );
-
-        let conditions = cond_fields
-            .into_iter()
-            .map(|c| c.into_user_condition())
-            .collect();
-
-        let status = UserStatus {
-            ready: true,
-            phase: UserPhase::Ready,
-            username: Some(name.clone()),
-            credentials_secret: Some(credentials_secret.to_string()),
-            conditions,
-            observed_generation: user.metadata.generation,
-            last_updated: Some(Utc::now().to_rfc3339()),
-            error_message: None,
+        status.last_updated = if semantic_change {
+            Some(Utc::now().to_rfc3339())
+        } else {
+            user.status
+                .as_ref()
+                .and_then(|current| current.last_updated.clone())
         };
 
-        let patch = serde_json::json!({ "status": status });
-        users
-            .patch_status(&name, &PatchParams::default(), &Patch::Merge(&patch))
-            .await
-            .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
-
-        Ok(())
-    }
-
-    /// Update status to pending
-    async fn update_status_pending(
-        &self,
-        user: &StreamlineUser,
-        namespace: &str,
-        message: &str,
-    ) -> Result<()> {
-        let name = user.name_any();
-        let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
-
-        let mut cond_fields = Vec::new();
-        set_condition(
-            &mut cond_fields,
-            build_condition(USER_CONDITION_READY, CONDITION_FALSE, "Pending", message),
-        );
-        set_condition(
-            &mut cond_fields,
-            build_condition(
-                USER_CONDITION_CREDENTIALS_READY,
-                CONDITION_FALSE,
-                "WaitingForCluster",
-                "Credentials cannot be provisioned until cluster is ready",
-            ),
-        );
-
-        let conditions = cond_fields
-            .into_iter()
-            .map(|c| c.into_user_condition())
-            .collect();
-
-        let status = UserStatus {
-            ready: false,
-            phase: UserPhase::Pending,
-            username: None,
-            credentials_secret: None,
-            conditions,
-            observed_generation: user.metadata.generation,
-            last_updated: Some(Utc::now().to_rfc3339()),
-            error_message: None,
-        };
-
-        let patch = serde_json::json!({ "status": status });
-        users
-            .patch_status(&name, &PatchParams::default(), &Patch::Merge(&patch))
-            .await
-            .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
-
-        Ok(())
-    }
-
-    /// Update status to error
-    async fn update_status_error(
-        &self,
-        user: &StreamlineUser,
-        namespace: &str,
-        error_message: &str,
-    ) -> Result<()> {
-        let name = user.name_any();
-        let users: Api<StreamlineUser> = Api::namespaced(self.client.clone(), namespace);
-
-        let mut cond_fields = Vec::new();
-        set_condition(
-            &mut cond_fields,
-            build_condition(
-                USER_CONDITION_READY,
-                CONDITION_FALSE,
-                "Error",
-                error_message,
-            ),
-        );
-        set_condition(
-            &mut cond_fields,
-            build_condition(
-                USER_CONDITION_CREDENTIALS_READY,
-                CONDITION_FALSE,
-                "ProvisioningFailed",
-                error_message,
-            ),
-        );
-
-        let conditions = cond_fields
-            .into_iter()
-            .map(|c| c.into_user_condition())
-            .collect();
-
-        let status = UserStatus {
-            ready: false,
-            phase: UserPhase::Failed,
-            username: None,
-            credentials_secret: None,
-            conditions,
-            observed_generation: user.metadata.generation,
-            last_updated: Some(Utc::now().to_rfc3339()),
-            error_message: Some(error_message.to_string()),
-        };
-
-        let patch = serde_json::json!({ "status": status });
-        users
-            .patch_status(&name, &PatchParams::default(), &Patch::Merge(&patch))
-            .await
-            .map_err(|e| OperatorError::KubeApi(e.to_string()))?;
-
-        Ok(())
+        status
     }
 }
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use crate::crd::UserSpec;
+
+    fn user() -> StreamlineUser {
+        let spec: UserSpec = serde_json::from_str(
+            r#"{"clusterRef": "c", "authentication": {"type": "scram-sha512"}}"#,
+        )
+        .unwrap();
+        StreamlineUser::new("app-user", spec)
+    }
+
     #[test]
-    fn test_user_controller() {
-        // Controller tests require k8s cluster
+    fn status_is_unsupported_and_not_ready() {
+        let status = UserController::unsupported_status(&user());
+
+        assert!(!status.ready);
+        assert_eq!(status.phase, UserPhase::Unsupported);
+        assert!(status.error_message.is_some());
+    }
+
+    #[test]
+    fn no_credentials_secret_is_claimed() {
+        let status = UserController::unsupported_status(&user());
+        assert!(status.credentials_secret.is_none());
+        assert!(status.username.is_none());
+    }
+
+    #[test]
+    fn conditions_explain_why_the_user_is_not_reconciled() {
+        let status = UserController::unsupported_status(&user());
+
+        let ready = status
+            .conditions
+            .iter()
+            .find(|c| c.r#type == USER_CONDITION_READY)
+            .expect("Ready condition");
+        assert_eq!(ready.status, CONDITION_FALSE);
+        assert_eq!(ready.reason.as_deref(), Some(UNSUPPORTED_REASON));
+
+        let credentials = status
+            .conditions
+            .iter()
+            .find(|c| c.r#type == USER_CONDITION_CREDENTIALS_READY)
+            .expect("CredentialsReady condition");
+        assert_eq!(credentials.status, CONDITION_FALSE);
+    }
+
+    #[test]
+    fn repeated_unsupported_status_is_stable() {
+        let mut resource = user();
+        let first = UserController::unsupported_status(&resource);
+        resource.status = Some(first.clone());
+
+        let second = UserController::unsupported_status(&resource);
+        assert_eq!(second, first);
+    }
+
+    #[test]
+    fn generation_change_updates_status_without_resetting_condition_transitions() {
+        let mut resource = user();
+        resource.metadata.generation = Some(1);
+        let mut first = UserController::unsupported_status(&resource);
+        first.last_updated = Some("2024-01-01T00:00:00Z".to_string());
+        let first_transitions: Vec<Option<String>> = first
+            .conditions
+            .iter()
+            .map(|condition| condition.last_transition_time.clone())
+            .collect();
+        resource.status = Some(first);
+        resource.metadata.generation = Some(2);
+
+        let second = UserController::unsupported_status(&resource);
+        assert_eq!(second.observed_generation, Some(2));
+        assert_ne!(second.last_updated.as_deref(), Some("2024-01-01T00:00:00Z"));
+        assert_eq!(
+            second
+                .conditions
+                .iter()
+                .map(|condition| condition.last_transition_time.clone())
+                .collect::<Vec<_>>(),
+            first_transitions
+        );
     }
 }

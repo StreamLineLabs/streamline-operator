@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt clean help check integration-up integration-down test-integration
+.PHONY: build test lint fmt clean help check integration-up integration-down test-integration generate-crds verify-crds release-manifests verify-release static
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -8,6 +8,12 @@ build: ## Build the operator
 
 test: ## Run tests (hermetic — no Kubernetes or Streamline required)
 	cargo test
+
+generate-crds: ## Regenerate deploy/crds/ from the Rust CRD types
+	cargo run --quiet --bin streamline-operator -- --generate-crds-dir deploy/crds
+
+verify-crds: ## CI helper: fail if committed CRDs differ from the generator
+	cargo test --locked --test crd_manifests checked_in_manifests_match_the_generator
 
 integration-up: ## Start integration services (override with STREAMLINE_TEST_IMAGE)
 	docker compose -f docker-compose.test.yml up -d --wait

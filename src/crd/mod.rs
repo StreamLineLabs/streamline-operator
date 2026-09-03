@@ -13,6 +13,7 @@ mod branch;
 mod cluster;
 mod contract;
 mod edge;
+pub mod generate;
 mod memory;
 mod topic;
 mod user;
@@ -26,8 +27,9 @@ pub use branch::{
 };
 pub use cluster::{
     AutoScalingSpec, ClusterCondition, ClusterPhase, ClusterSpec, ClusterStatus, ClusterStorage,
-    ClusterTls, ResourceRequirements, ScalingBehaviorSpec, ScalingPolicySpec, ScalingRulesSpec,
-    StreamlineCluster,
+    ClusterTls, ConfigMapKeyRef, EnvVar, EnvVarRef, EnvVarSource, RackAwareness,
+    ResourceRequirements, ScalingBehaviorSpec, ScalingPolicySpec, ScalingRulesSpec, SecretKeyRef,
+    StreamlineCluster, Toleration,
 };
 pub use contract::{
     ContractCompatibility, ContractCondition, ContractPhase, ContractSpec, ContractStatus,
@@ -38,7 +40,10 @@ pub use memory::{
     MemoryCondition, MemoryDecay, MemoryPhase, MemorySpec, MemoryStatus, MemoryTiers,
     StreamlineMemory,
 };
-pub use topic::{StreamlineTopic, TopicCondition, TopicPhase, TopicSpec, TopicStatus};
+pub use topic::{
+    CompressionConfig, RetentionConfig, StreamlineTopic, TopicCondition, TopicConfig,
+    TopicConfigDefaults, TopicPhase, TopicSpec, TopicStatus,
+};
 pub use user::{
     StreamlineUser, UserCondition, UserCredentials, UserPermission, UserPhase, UserSpec, UserStatus,
 };

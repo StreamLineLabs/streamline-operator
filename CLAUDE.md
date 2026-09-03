@@ -6,7 +6,8 @@ Kubernetes operator for [Streamline](https://github.com/streamlinelabs/streamlin
 ## Build & Test
 ```bash
 cargo build -p streamline-operator    # Build
-cargo test                            # Run tests
+cargo test                            # Run tests (hermetic)
+make generate-crds                    # Regenerate deploy/crds/ from src/crd/
 cargo fmt --all -- --check            # Check formatting
 cargo clippy --all-targets -- -D warnings  # Lint
 ```
@@ -19,7 +20,7 @@ src/
 ├── controllers/         # Reconciliation loops
 │   ├── cluster.rs       # StreamlineCluster → StatefulSet, Service, ConfigMap
 │   ├── topic.rs         # StreamlineTopic → API calls to Streamline
-│   └── user.rs          # StreamlineUser → Secrets, credentials
+│   └── user.rs          # StreamlineUser → status only (unsupported)
 ├── crd/                 # CRD type definitions (v1alpha1)
 │   ├── cluster.rs       # StreamlineCluster spec/status
 │   ├── topic.rs         # StreamlineTopic spec/status

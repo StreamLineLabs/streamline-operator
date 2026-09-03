@@ -2,25 +2,30 @@
 //!
 //! Each controller watches its respective CRD and reconciles the actual state
 //! with the desired state specified in the custom resources.
+//!
+//! # Enabled controllers
+//!
+//! Only `StreamlineCluster`, `StreamlineTopic`, and `StreamlineUser` have a
+//! controller. `StreamlineBranch`, `StreamlineContract`, and `StreamlineMemory`
+//! deliberately have none — the Streamline server exposes no compatible API for
+//! them (see [`crate::crd::generate::Reconciliation`] for the per-kind reason),
+//! so their CRDs are schema-only and are neither installed nor RBAC-authorised.
+//! Reintroducing a controller here without also changing that reconciliation
+//! metadata fails `tests/crd_manifests.rs`.
 
 mod autoscaling;
-pub mod branch;
 mod cluster;
-pub mod contract;
-pub mod memory;
 pub mod operator_hub;
 mod scale_to_zero;
 mod topic;
 mod user;
 
 pub use autoscaling::{
-    AutoScalingConfig, AutoScalingController, CustomMetric, MetricTargetSpec, PartitionMetrics,
-    ScalingBehavior, ScalingPolicy, ScalingRecommendation, ScalingRules,
+    AutoScalingConfig, AutoScalingController, CustomMetric, DeleteOutcome, HpaAction,
+    MetricTargetSpec, PartitionMetrics, ScalingBehavior, ScalingPolicy, ScalingRecommendation,
+    ScalingRules,
 };
-pub use branch::BranchController;
 pub use cluster::ClusterController;
-pub use contract::ContractController;
-pub use memory::MemoryController;
 pub use operator_hub::{
     HubConfig, HubOperator, HubStats, InstallStatus, InstalledOperator, IntegrationType,
     OperatorCategory, OperatorHub, BUNDLED_OPERATORS,

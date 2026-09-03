@@ -230,6 +230,53 @@ pub struct PartitionMetrics {
     pub under_replicated_partitions: i32,
 }
 
+/// What reconciling a given [`AutoScalingConfig`] does to the cluster's HPA.
+///
+/// Extracted from [`AutoScalingController::reconcile_hpa`] so callers — and
+/// tests — can assert which branch a configuration takes without a Kubernetes
+/// API server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HpaAction {
+    /// Create or update the HPA.
+    Apply,
+    /// Delete any HPA that exists, and create none.
+    Delete,
+}
+
+/// Decide whether a configuration applies an HPA or deletes one.
+pub fn hpa_action(autoscaling: &AutoScalingConfig) -> HpaAction {
+    if autoscaling.enabled {
+        HpaAction::Apply
+    } else {
+        HpaAction::Delete
+    }
+}
+
+/// How a failed HPA delete is treated.
+///
+/// Split out of [`AutoScalingController::delete_hpa`] so the error policy is
+/// assertable without a Kubernetes API server. Only "already gone" may be
+/// swallowed: every other failure (403 from missing RBAC, 500 from the API
+/// server, a transport error) means the stale HPA is *still there*, still
+/// scaling the StatefulSet into independent brokers. Swallowing those made the
+/// reconcile report success, so the controller never retried and the HPA
+/// survived indefinitely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteOutcome {
+    /// The HPA is gone (deleted now, or already absent).
+    Gone,
+    /// The delete failed; surface the error so the controller retries.
+    Propagate,
+}
+
+/// Classify a Kubernetes error from an HPA delete.
+pub fn classify_delete_error(error: &kube::Error) -> DeleteOutcome {
+    match error {
+        kube::Error::Api(response) if response.code == 404 => DeleteOutcome::Gone,
+        _ => DeleteOutcome::Propagate,
+    }
+}
+
 /// Auto-scaling controller for StreamlineCluster resources
 pub struct AutoScalingController {
     client: Client,
@@ -248,8 +295,9 @@ impl AutoScalingController {
         namespace: &str,
         autoscaling: &AutoScalingConfig,
     ) -> Result<()> {
-        if !autoscaling.enabled {
-            // If autoscaling is disabled, delete any existing HPA
+        if hpa_action(autoscaling) == HpaAction::Delete {
+            // Autoscaling is disabled or rejected: remove any HPA that exists,
+            // including one left behind by an earlier version of the operator.
             return self.delete_hpa(cluster, namespace).await;
         }
 
@@ -280,7 +328,13 @@ impl AutoScalingController {
         Ok(())
     }
 
-    /// Delete HPA for a cluster
+    /// Delete the HPA this operator owns for a cluster.
+    ///
+    /// A missing HPA is success. Every other failure is propagated so the
+    /// caller's error policy requeues with backoff: a stale HPA that could not
+    /// be deleted is exactly the split-brain scaler this cleanup exists to
+    /// remove, and reporting success would retire the only retry that removes
+    /// it.
     async fn delete_hpa(&self, cluster: &StreamlineCluster, namespace: &str) -> Result<()> {
         let name = format!("{}-hpa", cluster.name_any());
         let hpas: Api<HorizontalPodAutoscaler> = Api::namespaced(self.client.clone(), namespace);
@@ -288,16 +342,21 @@ impl AutoScalingController {
         match hpas.delete(&name, &Default::default()).await {
             Ok(_) => {
                 info!("Deleted HPA {} in namespace {}", name, namespace);
+                Ok(())
             }
-            Err(kube::Error::Api(e)) if e.code == 404 => {
-                debug!("HPA {} does not exist, nothing to delete", name);
-            }
-            Err(e) => {
-                warn!("Failed to delete HPA {}: {}", name, e);
-            }
+            Err(e) => match classify_delete_error(&e) {
+                DeleteOutcome::Gone => {
+                    debug!("HPA {} does not exist, nothing to delete", name);
+                    Ok(())
+                }
+                DeleteOutcome::Propagate => {
+                    warn!("Failed to delete HPA {}: {}", name, e);
+                    Err(OperatorError::KubeApi(format!(
+                        "failed to delete HPA {name} in namespace {namespace}: {e}"
+                    )))
+                }
+            },
         }
-
-        Ok(())
     }
 
     /// Build an HPA resource from the cluster spec
@@ -703,6 +762,78 @@ mod tests {
         // (controller instantiation requires a real k8s client)
         assert_eq!(metrics.total_partitions, 30);
         assert_eq!(config.target_lag_per_partition, 10000);
+    }
+
+    /// `reconcile_hpa` branches on exactly this decision, so a disabled config
+    /// provably deletes rather than creates.
+    #[test]
+    fn disabled_config_deletes_the_hpa_instead_of_creating_one() {
+        let disabled = AutoScalingConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(hpa_action(&disabled), HpaAction::Delete);
+
+        let enabled = AutoScalingConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        assert_eq!(hpa_action(&enabled), HpaAction::Apply);
+    }
+
+    // --- Delete error policy ----------------------------------------------
+    //
+    // `delete_hpa` used to log every failure and return `Ok(())`. A 403 from
+    // missing RBAC, or a 500 from the API server, therefore looked like a
+    // successful cleanup: the reconcile finished "successfully", the error
+    // policy never requeued, and the stale HPA kept scaling the StatefulSet.
+
+    fn api_error(code: u16) -> kube::Error {
+        kube::Error::Api(kube::error::ErrorResponse {
+            status: "Failure".to_string(),
+            message: format!("simulated {code}"),
+            reason: "Simulated".to_string(),
+            code,
+        })
+    }
+
+    #[test]
+    fn a_missing_hpa_is_a_successful_delete() {
+        assert_eq!(classify_delete_error(&api_error(404)), DeleteOutcome::Gone);
+    }
+
+    #[test]
+    fn every_other_api_error_is_propagated_so_the_controller_retries() {
+        for code in [400, 401, 403, 409, 422, 429, 500, 503] {
+            assert_eq!(
+                classify_delete_error(&api_error(code)),
+                DeleteOutcome::Propagate,
+                "HTTP {code} must not be swallowed: the stale HPA is still there"
+            );
+        }
+    }
+
+    #[test]
+    fn non_api_errors_are_propagated_too() {
+        // Transport/serialisation failures say nothing about the HPA's fate.
+        let transport = kube::Error::LinesCodecMaxLineLengthExceeded;
+        assert_eq!(classify_delete_error(&transport), DeleteOutcome::Propagate);
+    }
+
+    /// A propagated delete error must be classified as a Kubernetes API error
+    /// so `error_policy_backoff` requeues it on the fast (10s) path.
+    #[test]
+    fn propagated_delete_errors_requeue_promptly() {
+        let error = crate::error::OperatorError::KubeApi("boom".to_string());
+        let action = crate::controllers::error_policy_backoff(
+            std::sync::Arc::new(()),
+            &error,
+            std::sync::Arc::new(()),
+        );
+        assert_eq!(
+            action,
+            kube::runtime::controller::Action::requeue(std::time::Duration::from_secs(10))
+        );
     }
 
     #[test]

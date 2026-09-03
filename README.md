@@ -10,6 +10,64 @@
 
 Kubernetes operator for managing [Streamline](https://github.com/streamlinelabs/streamline) clusters, topics, and users using Custom Resource Definitions (CRDs).
 
+## ⚠️ Upgrading from v0.3.0 — patch your resources first
+
+**If you have resources created against the v0.3.0 CRDs, patch them before
+deploying this operator.** v0.3.0 declared schema defaults that the API server
+persisted into every stored object, and this operator rejects all six rather
+than run unsafe independent brokers, claim durability the server does not
+provide, or advertise topic settings the broker never receives:
+
+| Kind | Field | v0.3.0 persisted | Required now |
+|------|-------|------------------|--------------|
+| `StreamlineCluster` | `spec.replicas` | `spec.replicas: 3` | `spec.replicas: 1` |
+| `StreamlineCluster` | `spec.podAntiAffinity` | `spec.podAntiAffinity: true` | `spec.podAntiAffinity: false` |
+| `StreamlineTopic` | `spec.replicationFactor` | `spec.replicationFactor: 2` | `spec.replicationFactor: 1` |
+| `StreamlineTopic` | `spec.retention.retentionMs` | `spec.retention.retentionMs: 604800000` | `spec.retention.retentionMs: -1` |
+| `StreamlineTopic` | `spec.config.minInsyncReplicas` | `spec.config.minInsyncReplicas: 1` | `spec.config.minInsyncReplicas: null` (remove) |
+| `StreamlineTopic` | `spec.config.maxMessageBytes` | `spec.config.maxMessageBytes: 1048576` | `spec.config.maxMessageBytes: null` (remove) |
+
+Your manifests may never mention these fields — Kubernetes applies CRD defaults
+on write, so the values are in etcd regardless, and installing the corrected
+CRDs does **not** rewrite objects that already exist. The three top-level fields
+are in every v0.3.0 resource; the three nested ones are in every topic whose
+manifest opened a `retention:` or `config:` block, because defaulting only
+descends into objects that are present. Nothing is auto-mutated: an unpatched
+resource reports `phase: Failed` (`InvalidSpec` / `UnsupportedConfiguration`)
+and stops reconciling, while its existing workloads keep running untouched.
+
+```bash
+# Find every affected resource (v0.3.0 ignored --namespace and watched them all)
+kubectl get streamlineclusters --all-namespaces \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPLICAS:.spec.replicas,PODANTIAFFINITY:.spec.podAntiAffinity'
+kubectl get streamlinetopics --all-namespaces \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPLICATIONFACTOR:.spec.replicationFactor,RETENTIONMS:.spec.retention.retentionMs,CONFIG:.spec.config'
+
+# Install the corrected CRDs FIRST: v0.3.0 defaults the two spec.config keys, so
+# a removal applied while those CRDs are installed is undone on the same write.
+kubectl apply -k deploy/crds/
+
+# Then patch each resource, in the namespace it lives in
+kubectl patch streamlineclusters my-cluster -n streamline-system --type merge -p '{"spec":{"replicas":1}}'
+kubectl patch streamlineclusters my-cluster -n streamline-system --type merge -p '{"spec":{"podAntiAffinity":false}}'
+kubectl patch streamlinetopics events -n streamline-system --type merge -p '{"spec":{"replicationFactor":1}}'
+kubectl patch streamlinetopics events -n streamline-system --type merge -p '{"spec":{"retention":{"retentionMs":-1}}}'
+kubectl patch streamlinetopics events -n streamline-system --type merge -p '{"spec":{"config":{"minInsyncReplicas":null}}}'
+kubectl patch streamlinetopics events -n streamline-system --type merge -p '{"spec":{"config":{"maxMessageBytes":null}}}'
+```
+
+Two fields v0.3.0's CRDs advertised are **gone** from these schemas and are
+pruned by the API server on the next write: `StreamlineCluster.spec.replication`
+(never read by any v0.3.0 code path) and `StreamlineTopic.spec.config.flushMs`
+(superseded by `flushIntervalMs`, which the operator also rejects). Copy
+anything you still need out of them before installing the CRDs.
+
+📖 **[docs/UPGRADING.md](docs/UPGRADING.md)** has the full path: discovery across
+every namespace, `--dry-run=server` rehearsal, bulk patch loops, verification,
+what the rejection messages look like, what happens to the data on brokers
+`-1` and `-2` when a cluster scales back to one replica, and what a rollback
+does and does not restore.
+
 ## Architecture
 
 ```
@@ -22,9 +80,9 @@ Kubernetes operator for managing [Streamline](https://github.com/streamlinelabs/
 │  └──────┬──────┘ └──────┬──────┘ └──────┬───────┘  │
 │         │               │               │           │
 │         ▼               ▼               ▼           │
-│  StatefulSets     Topic CRUD via   Secrets &        │
-│  Services         Streamline API   Credentials      │
-│  ConfigMaps                                         │
+│  StatefulSets     Topic create/    Unsupported:     │
+│  Services         delete via the   reports status,  │
+│  ConfigMaps       Streamline API   creates nothing  │
 │  PVCs                                               │
 └─────────────────────────────────────────────────────┘
          │                │               │
@@ -33,12 +91,56 @@ Kubernetes operator for managing [Streamline](https://github.com/streamlinelabs/
 │              Kubernetes Cluster                      │
 │  ┌────────────────┐  ┌───────┐  ┌────────────────┐  │
 │  │StreamlineCluster│ │Topics │  │StreamlineUsers │  │
-│  │  (StatefulSet) │  │(CRDs) │  │  (Secrets)     │  │
+│  │  (StatefulSet) │  │(CRDs) │  │ (status only)  │  │
 │  └────────────────┘  └───────┘  └────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
 
-The operator runs three concurrent controllers using [kube-rs](https://kube.rs/), each watching its own CRD and reconciling state with a 30-second requeue interval. All controllers use finalizer-based cleanup for safe deletion.
+The operator runs three concurrent controllers using [kube-rs](https://kube.rs/)
+— `StreamlineCluster`, `StreamlineTopic`, and `StreamlineUser` — each watching
+its own CRD. Controllers that create Kubernetes objects use finalizer-based
+cleanup for safe deletion.
+
+`StreamlineBranch`, `StreamlineContract`, `StreamlineMemory`,
+`StreamlineBackup`, and `StreamlineEdge` have **no controller** and are **not
+installed**; see [Schema-only CRDs](#schema-only-crds).
+
+### Namespace scope and RBAC
+
+By default the shipped `deploy/operator.yaml` passes
+`--namespace=$(OPERATOR_NAMESPACE)`, so the operator watches only the namespace
+it runs in, and `deploy/rbac/` grants a namespaced **Role**/**RoleBinding**.
+
+For a cloud control plane that must reconcile tenant resources across
+namespaces, use the opt-in `overlays/cloud/` Kustomize overlay. It patches the
+Deployment to pass `--namespace=` (an explicit empty value), binds the
+ServiceAccount to a least-privilege `ClusterRole`, and keeps leader-election
+Lease access in a namespaced `Role`. It also labels the `streamline-system`
+namespace with `streamline.io/control-plane=true`; Streamline Cloud's tenant
+NetworkPolicies require that label before the topic controller can reach the
+private broker HTTP API on port 9094. The default `deploy/` install remains
+namespace-scoped and does not carry the cross-namespace access label.
+
+The leader-election Lease always lives in the namespace the operator *runs* in
+(or `--leader-election-namespace`), independently of what it watches.
+
+### Clustering status
+
+The cluster controller renders each replica as a **standalone broker**: it does
+not bootstrap raft peers, so `spec.replicas` defaults to `1` and values greater
+than `1` are rejected as unsupported rather than producing independent brokers
+that look like a quorum.
+
+The v0.3.0 CRD defaulted `spec.replicas` to `3`, so resources created against it
+are rejected until patched — see
+[Upgrading from v0.3.0](#️-upgrading-from-v030--patch-your-resources-first).
+
+### User management is not supported
+
+The Streamline server exposes no user API, so `StreamlineUser` resources are
+reported as `Unsupported`: no user, ACL, quota, or credentials Secret is
+created. The CRD remains installed so existing manifests surface an explicit
+status instead of silently doing nothing.
 
 ## Quick Start
 
@@ -77,13 +179,13 @@ kubectl apply -f deploy/operator.yaml
 
 ```yaml
 # streamline-cluster.yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
+apiVersion: streamline.io/v1alpha1
 kind: StreamlineCluster
 metadata:
   name: my-cluster
   namespace: default
 spec:
-  replicas: 3
+  replicas: 1
   image: ghcr.io/streamlinelabs/streamline:latest
   storage:
     size: 10Gi
@@ -95,10 +197,11 @@ spec:
     limits:
       cpu: "2"
       memory: 2Gi
-  tls:
-    enabled: false
-  podAntiAffinity: true
 ```
+
+TLS is off unless `spec.tls` is present, and enabling it requires
+`spec.tls.secretName` (plus `caSecretName` for mTLS) — the operator rejects a
+`tls` block it cannot mount.
 
 ```bash
 kubectl apply -f streamline-cluster.yaml
@@ -109,7 +212,7 @@ kubectl get streamlineclusters
 
 ```yaml
 # my-topic.yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
+apiVersion: streamline.io/v1alpha1
 kind: StreamlineTopic
 metadata:
   name: events
@@ -117,13 +220,7 @@ metadata:
 spec:
   clusterRef: my-cluster
   partitions: 6
-  replicationFactor: 2
-  retention:
-    ms: 604800000       # 7 days
-    bytes: -1           # unlimited
-  compression: lz4
-  config:
-    minInsyncReplicas: 2
+  replicationFactor: 1
 ```
 
 ```bash
@@ -131,11 +228,20 @@ kubectl apply -f my-topic.yaml
 kubectl get streamlinetopics
 ```
 
+> **Only `partitions` is applied.** The Streamline topic API accepts a name and
+> a partition count and nothing else: it creates single-replica topics and
+> exposes no way to set retention, compaction, compression, or any other topic
+> config. Rather than sending settings the server discards and then reporting
+> `Ready`, the controller **rejects** any `spec.retention`, `spec.compression`,
+> or `spec.config` value that differs from the schema default, and publishes
+> `phase: Failed` with an explanation. The `Synced` condition only ever claims
+> the partition count and replication factor the server actually reported back.
+
 ### Create a User with ACLs
 
 ```yaml
 # app-user.yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
+apiVersion: streamline.io/v1alpha1
 kind: StreamlineUser
 metadata:
   name: app-producer
@@ -143,15 +249,18 @@ metadata:
 spec:
   clusterRef: my-cluster
   authentication:
-    type: scram-sha-512
+    type: scram-sha512
     credentials:
-      secretRef: app-producer-credentials
-  acls:
-    - resource: Topic
-      name: events
-      patternType: literal
-      operations: [Write, Describe]
-      effect: allow
+      secretRef:
+        name: app-producer-credentials
+        key: password
+  authorization:
+    acls:
+      - resourceType: topic
+        resourceName: events
+        patternType: literal
+        operations: [write, describe]
+        permission: allow
   quotas:
     producerByteRate: 10485760  # 10MB/s
 ```
@@ -169,15 +278,28 @@ Manages a StatefulSet-based Streamline cluster with headless services, persisten
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `spec.replicas` | int | 3 | Number of broker instances |
+| `spec.replicas` | int | 1 | Number of broker instances (standalone; see "Clustering status") |
 | `spec.image` | string | latest | Container image |
 | `spec.storage.size` | string | 10Gi | PVC size per broker |
 | `spec.storage.storageClassName` | string | — | Storage class |
-| `spec.tls.enabled` | bool | false | Enable TLS/mTLS |
+| `spec.tls.enabled` | bool | false | Enable TLS; requires `spec.tls.secretName`, which is mounted at `/etc/streamline-tls` |
+| `spec.tls.mtlsEnabled` | bool | false | Require client certs; requires `spec.tls.caSecretName`, mounted at `/etc/streamline-tls-ca` |
+| `spec.tls.insecureSkipVerify` | bool | false | Rejected — the operator refuses to render it |
 | `spec.resources` | ResourceRequirements | — | CPU/memory limits |
-| `spec.podAntiAffinity` | bool | true | Spread across nodes |
-| `spec.rackAwareness.enabled` | bool | false | Zone-aware placement |
-| `spec.autoscaling` | AutoScalingSpec | — | Optional HPA config |
+| `spec.env` | []EnvVar | — | Extra broker variables; `value` and `valueFrom.secretKeyRef`/`valueFrom.configMapKeyRef` are rendered onto the container, and the kubelet resolves the reference (the operator never reads the Secret) |
+| `spec.nodeSelector` | map[string]string | — | Applied — rendered as the pod's `nodeSelector` |
+| `spec.podAntiAffinity` | bool | false | Rejected when `true` — the operator renders no affinity rules |
+| `spec.rackAwareness.enabled` | bool | false | Rejected when `true` — the operator renders no topology spread or rack labelling |
+| `spec.tolerations` | []Toleration | — | Rejected when non-empty — the operator renders no tolerations |
+| `spec.autoscaling` | AutoScalingSpec | — | Rejected when enabled until the operator can bootstrap real multi-broker clusters |
+
+`nodeSelector` is the only scheduling control the pod template carries.
+`podAntiAffinity`, `rackAwareness`, and `tolerations` remain in the schema for
+compatibility, but the controller rejects them with `InvalidSpec` instead of
+accepting a placement request it never renders. `podAntiAffinity` defaulted to
+`true` in v0.3.0 and was persisted into existing objects, so upgrading
+installations must patch it to `false` — see
+[docs/UPGRADING.md](docs/UPGRADING.md).
 
 **Status phases**: `Pending` → `Running` → `Scaling` / `Upgrading` → `Failed` / `Terminating`
 
@@ -188,101 +310,61 @@ Manages topics within a referenced Streamline cluster.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec.clusterRef` | string | — | Parent cluster name (required) |
-| `spec.partitions` | int | 3 | Partition count |
-| `spec.replicationFactor` | int | 2 | Replication factor |
-| `spec.retention.ms` | int | 604800000 | Retention time (7 days) |
-| `spec.retention.bytes` | int | -1 | Retention size (-1 = unlimited) |
-| `spec.compression` | string | producer | Compression type |
-| `spec.config` | map | — | Additional topic config |
+| `spec.partitions` | int | 3 | Partition count — the only field the server applies |
+| `spec.replicationFactor` | int | 1 | Replication factor; values other than `1` are rejected as unsupported. Defaulted to `2` in v0.3.0 — see [docs/UPGRADING.md](docs/UPGRADING.md) |
+| `spec.retention.retentionMs` | int | -1 | Unlimited. Not applied: the broker never expires a segment on age, so any other value is rejected |
+| `spec.retention.retentionBytes` | int | -1 | Unlimited. Not applied; any other value is rejected |
+| `spec.retention.cleanupPolicy` | string | `delete` | Not applied; any other value is rejected |
+| `spec.compression.type` | string | `producer` | Not applied — compression is chosen by the producer; any other value is rejected |
+| `spec.config` | object | — | Topic config overrides; **every** entry is rejected (the server applies none) |
+
+Both retention axes default to `-1` because the core topic API applies no topic
+configuration at all: topics are retained indefinitely. `retentionMs` used to
+default to `604800000`, which advertised a seven-day policy nothing implemented
+— and because non-default values are rejected, that wrong value was also the
+only one a user was permitted to keep.
 
 ### StreamlineUser
 
-Manages authentication credentials, ACLs, and quotas for users.
+> ⚠️ **Unsupported.** The Streamline server has no user API, so the controller
+> publishes an `Unsupported` status and creates nothing (no user, no ACLs, no
+> quotas, no credentials Secret). The fields below describe the schema only.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec.clusterRef` | string | — | Parent cluster name (required) |
-| `spec.authentication.type` | string | — | scram-sha-256/512, plain, tlsClientAuth |
+| `spec.authentication.type` | string | — | `scram-sha256`, `scram-sha512`, `plain`, `tls-client-auth` |
 | `spec.acls` | []ACL | — | Access control entries |
 | `spec.quotas` | QuotaSpec | — | Producer/consumer rate limits |
 
-## Moonshot CRDs
+## Schema-only CRDs
 
-> ⚠️ **Experimental** — These CRDs require Streamline server 0.3.0+ with moonshot feature flags enabled.
+> ⚠️ **Not installed, not reconciled.** The Rust types for the kinds below
+> exist so their schemas can be generated and reviewed, and
+> `make generate-crds` writes a manifest for each into `deploy/crds/`. None of
+> them is listed in `deploy/crds/kustomization.yaml`, none appears in
+> `deploy/rbac/role.yaml`, and the operator starts no controller for any of
+> them. Applying one of these CRDs by hand gives you a resource nothing will
+> ever act on.
+>
+> Each generated manifest states the specific reason in its header, and
+> `cargo test` fails if a controller, CRD installation, or RBAC grant is added
+> without changing the reconciliation metadata in `src/crd/generate.rs`.
 
-### StreamlineContract
+| Kind | Why it is schema only |
+|------|-----------------------|
+| `StreamlineBranch` | The server's branch API sits behind the non-default `branches` cargo feature (absent from both the `lite` default and `full`) and takes `{base_topic, name, base_offsets, created_by}` with `<base_topic>:<name>` identifiers — a shape this CRD cannot express. |
+| `StreamlineContract` | The server exposes `POST /api/v1/contracts/{validate,apply}` taking `{contract: {topic, version, schema_id, assertions}, partition, value}`. There is no `POST /api/v1/contracts`, and no schema/compatibility/`bindTopics` contract to apply. |
+| `StreamlineMemory` | The server's memory API sits behind the non-default `agent-memory` cargo feature and is a remember/recall endpoint, not a provisioning API. A controller could only create ordinary topics and then report memory tiers `Ready` that nothing implements. |
+| `StreamlineBackup` | The server exposes no backup or restore API. |
+| `StreamlineEdge` | The server's edge sync support sits behind the non-default `edge` cargo feature and exposes no endpoint this CRD could reconcile. |
 
-Manages data contracts with producer-side schema enforcement and cryptographic attestations.
+To read a schema, use the generated manifest rather than a hand-written
+example:
 
-```yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
-kind: StreamlineContract
-metadata:
-  name: events-contract
-spec:
-  clusterRef: my-cluster
-  topic: events
-  schema:
-    type: json-schema
-    definition: |
-      {"type":"object","required":["id","timestamp"],"properties":{"id":{"type":"string"},"timestamp":{"type":"string","format":"date-time"}}}
-  enforcement: reject
-  attestation:
-    enabled: true
-    signingKeyRef: producer-signing-key
-```
-
-### StreamlineBranch
-
-Manages topic branches for replay, A/B testing, and counterfactual analysis.
-
-```yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
-kind: StreamlineBranch
-metadata:
-  name: events-experiment
-spec:
-  clusterRef: my-cluster
-  sourceTopic: events
-  branchName: experiment-v2
-  fromOffset: latest
-```
-
-### StreamlineMemory
-
-Manages MCP-based agent memory namespaces.
-
-```yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
-kind: StreamlineMemory
-metadata:
-  name: agent-memory
-spec:
-  clusterRef: my-cluster
-  namespace: chatbot-v1
-  retentionDays: 90
-  semanticSearch:
-    enabled: true
-    embeddingModel: bge-small
-```
-
-### StreamlineEdge
-
-Manages edge sync endpoints with CRDT merge policies.
-
-```yaml
-apiVersion: streaming.streamlinelabs.dev/v1alpha1
-kind: StreamlineEdge
-metadata:
-  name: edge-sync
-spec:
-  clusterRef: my-cluster
-  topics:
-    - user-preferences
-    - offline-actions
-  syncProtocol: quic
-  mergePolicy: last-writer-wins
-  maxOfflineDuration: 72h
+```bash
+kubectl explain --recursive -f deploy/crds/streamlinebranch-crd.yaml  # offline schema
+less deploy/crds/streamlinecontract-crd.yaml
 ```
 
 ## Development
@@ -389,6 +471,22 @@ streamline-operator/
 
 ## Troubleshooting
 
+### Cluster or topic reports `Failed` right after an upgrade
+
+A `Failed` phase with `InvalidSpec` on `spec.replicas`/`spec.podAntiAffinity`,
+or `UnsupportedConfiguration` on `spec.replicationFactor`, means the resource
+still carries a default v0.3.0 persisted into it. Patch it — the message names
+the field and the exact command, and
+[docs/UPGRADING.md](docs/UPGRADING.md) has the full sequence.
+
+```bash
+# Every resource still carrying a rejected v0.3.0 value
+kubectl get streamlineclusters --all-namespaces \
+  -o jsonpath='{range .items[?(@.spec.replicas>1)]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}'
+kubectl get streamlinetopics --all-namespaces \
+  -o jsonpath='{range .items[?(@.spec.replicationFactor!=1)]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}'
+```
+
 ### Operator not starting
 
 ```bash
@@ -417,6 +515,10 @@ kubectl get pvc -l app.kubernetes.io/instance=my-cluster
 
 ### Topic not becoming Ready
 
+An `Unsupported`/`Failed` phase with a message about settings being "silently
+discarded" means the spec sets a topic option the Streamline server does not
+apply — remove it (see "Create a Topic").
+
 ```bash
 # Check topic status and conditions
 kubectl describe streamlinetopic events
@@ -432,4 +534,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
-<!-- fix: 0cd8410e -->

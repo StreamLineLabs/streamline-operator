@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
     kind = "StreamlineContract",
     namespaced,
     status = "ContractStatus",
-    shortname = "slc",
+    // `slc` is taken by StreamlineCluster; a duplicate short name makes
+    // `kubectl get slc` ambiguous.
+    shortname = "slcon",
     printcolumn = r#"{"name":"Cluster","type":"string","jsonPath":".spec.clusterRef"}"#,
     printcolumn = r#"{"name":"Compatibility","type":"string","jsonPath":".spec.compatibility"}"#,
     printcolumn = r#"{"name":"Phase","type":"string","jsonPath":".status.phase"}"#,
