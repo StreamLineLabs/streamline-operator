@@ -223,6 +223,7 @@ spec:
                 format: int32
                 type: integer
               image:
+                default: ghcr.io/streamlinelabs/streamline:0.4.0
                 description: |-
                   Container image to use for the Streamline broker.
 

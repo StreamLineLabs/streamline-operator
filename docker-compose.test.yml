@@ -9,17 +9,17 @@
 #   make integration-down
 #
 # Configuration (all optional — defaults match tests/integration.rs):
-#   STREAMLINE_TEST_IMAGE        Server image         (default ghcr.io/streamlinelabs/streamline:0.2.0)
+#   STREAMLINE_TEST_IMAGE        Server image         (default ghcr.io/streamlinelabs/streamline:0.4.0)
 #   STREAMLINE_TEST_KAFKA_PORT   Host Kafka port      (default 9092)
 #   STREAMLINE_TEST_HTTP_PORT    Host HTTP API port   (default 9094)
 #   STREAMLINE_TEST_LOG_LEVEL    Server log verbosity (default info)
 #
 # Example:
-#   STREAMLINE_TEST_IMAGE=ghcr.io/streamlinelabs/streamline:0.3.0 \
+#   STREAMLINE_TEST_IMAGE=ghcr.io/streamlinelabs/streamline:0.4.0 \
 #   STREAMLINE_TEST_HTTP_PORT=19094 make integration-up
 services:
   streamline:
-    image: ${STREAMLINE_TEST_IMAGE:-ghcr.io/streamlinelabs/streamline:0.2.0}
+    image: ${STREAMLINE_TEST_IMAGE:-ghcr.io/streamlinelabs/streamline:0.4.0}
     ports:
       - "${STREAMLINE_TEST_KAFKA_PORT:-9092}:9092"
       - "${STREAMLINE_TEST_HTTP_PORT:-9094}:9094"

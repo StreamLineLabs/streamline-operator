@@ -14,10 +14,15 @@ apiVersion: streamline.io/v1alpha1
 kind: StreamlineCluster
 metadata:
   name: my-cluster
+  # The shipped Deployment watches only its own namespace
+  # (`--namespace=$(OPERATOR_NAMESPACE)`) and `deploy/rbac/` grants a namespaced
+  # Role there, so resources must live in `streamline-system` to be reconciled.
+  namespace: streamline-system
 spec:
   # Each replica is a standalone broker: the operator does not bootstrap raft
   # peers, so the default (and only verified) value is 1.
   replicas: 1
+  image: ghcr.io/streamlinelabs/streamline:0.4.0
   storage:
     size: 10Gi
     storageClassName: standard
@@ -85,6 +90,7 @@ apiVersion: streamline.io/v1alpha1
 kind: StreamlineTopic
 metadata:
   name: events
+  namespace: streamline-system
 spec:
   clusterRef: my-cluster
   partitions: 6

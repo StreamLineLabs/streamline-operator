@@ -236,11 +236,11 @@ log_info "--- Test 5: Upgrade Path ---"
 
 # Test updating the cluster image (simulates an upgrade)
 kubectl patch streamlinecluster test-cluster -n "${NAMESPACE}" --type=merge \
-  -p '{"spec":{"image":"ghcr.io/streamlinelabs/streamline:v0.3.0"}}' 2>/dev/null || true
+  -p '{"spec":{"image":"ghcr.io/streamlinelabs/streamline:0.4.0"}}' 2>/dev/null || true
 
 IMAGE=$(kubectl get streamlinecluster test-cluster -n "${NAMESPACE}" -o jsonpath='{.spec.image}' 2>/dev/null || echo "")
-if [[ "${IMAGE}" == "ghcr.io/streamlinelabs/streamline:v0.3.0" ]]; then
-  log_pass "StreamlineCluster image upgraded to v0.3.0"
+if [[ "${IMAGE}" == "ghcr.io/streamlinelabs/streamline:0.4.0" ]]; then
+  log_pass "StreamlineCluster image upgraded to 0.4.0"
 else
   log_fail "StreamlineCluster image upgrade failed, got '${IMAGE}'"
 fi

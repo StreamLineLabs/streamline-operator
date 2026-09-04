@@ -228,7 +228,7 @@ metadata:
   namespace: streamline-system
 spec:
   replicas: 1
-  image: ghcr.io/streamlinelabs/streamline:latest
+  image: ghcr.io/streamlinelabs/streamline:0.4.0
   storage:
     size: 10Gi
     storageClassName: standard
@@ -322,7 +322,7 @@ Manages a StatefulSet-based Streamline cluster with headless services, persisten
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `spec.replicas` | int | 1 | Number of broker instances (standalone; see "Clustering status") |
-| `spec.image` | string | latest | Container image |
+| `spec.image` | string | `ghcr.io/streamlinelabs/streamline:0.4.0` | Streamline **server** image |
 | `spec.storage.size` | string | 10Gi | PVC size per broker |
 | `spec.storage.storageClassName` | string | — | Storage class |
 | `spec.tls.enabled` | bool | false | Enable TLS; requires `spec.tls.secretName`, which is mounted at `/etc/streamline-tls` |
@@ -475,7 +475,7 @@ The image and endpoints are configurable — see
 [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md#integration-test-variables):
 
 ```bash
-STREAMLINE_TEST_IMAGE=ghcr.io/streamlinelabs/streamline:0.3.0 \
+STREAMLINE_TEST_IMAGE=ghcr.io/streamlinelabs/streamline:0.4.0 \
 STREAMLINE_TEST_HTTP_PORT=19094 \
 STREAMLINE_TEST_KAFKA_PORT=19092 make integration-up
 

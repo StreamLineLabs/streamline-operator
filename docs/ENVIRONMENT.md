@@ -74,7 +74,7 @@ the default `cargo test` run ignores them entirely.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `STREAMLINE_TEST_IMAGE` | Streamline server image started by `docker-compose.test.yml` | `ghcr.io/streamlinelabs/streamline:0.2.0` |
+| `STREAMLINE_TEST_IMAGE` | Streamline server image started by `docker-compose.test.yml` | `ghcr.io/streamlinelabs/streamline:0.4.0` |
 | `STREAMLINE_TEST_HTTP_PORT` | Host port mapped to the server HTTP API | `9094` |
 | `STREAMLINE_TEST_KAFKA_PORT` | Host port mapped to the server Kafka listener | `9092` |
 | `STREAMLINE_TEST_HTTP_ENDPOINT` | Full HTTP endpoint override for the tests | `http://127.0.0.1:$STREAMLINE_TEST_HTTP_PORT` |

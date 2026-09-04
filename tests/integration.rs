@@ -17,7 +17,7 @@
 //!
 //! | Variable | Description | Default |
 //! |---|---|---|
-//! | `STREAMLINE_TEST_IMAGE` | Server image used by `docker-compose.test.yml` | `ghcr.io/streamlinelabs/streamline:0.2.0` |
+//! | `STREAMLINE_TEST_IMAGE` | Server image used by `docker-compose.test.yml` | `ghcr.io/streamlinelabs/streamline:0.4.0` |
 //! | `STREAMLINE_TEST_HTTP_PORT` | Host port mapped to the HTTP API | `9094` |
 //! | `STREAMLINE_TEST_KAFKA_PORT` | Host port mapped to the Kafka listener | `9092` |
 //! | `STREAMLINE_TEST_HTTP_ENDPOINT` | Full HTTP endpoint override | `http://127.0.0.1:<http-port>` |
@@ -31,7 +31,7 @@ use std::time::Duration;
 
 /// Default Streamline server image. Kept in sync with `docker-compose.test.yml`
 /// by [`compose_default_image_matches_config`].
-pub const DEFAULT_IMAGE: &str = "ghcr.io/streamlinelabs/streamline:0.2.0";
+pub const DEFAULT_IMAGE: &str = "ghcr.io/streamlinelabs/streamline:0.4.0";
 const DEFAULT_HTTP_PORT: &str = "9094";
 const DEFAULT_KAFKA_PORT: &str = "9092";
 const DEFAULT_TIMEOUT_SECS: u64 = 15;

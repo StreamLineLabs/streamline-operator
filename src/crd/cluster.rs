@@ -545,8 +545,13 @@ fn default_replicas() -> i32 {
     1
 }
 
+/// Default Streamline *server* image.
+///
+/// Pinned (not `latest`) and kept in sync with the server image the integration
+/// harness exercises — see `tests/integration.rs::DEFAULT_IMAGE`, which
+/// `tests/static_manifests.rs` asserts against.
 fn default_image() -> String {
-    "ghcr.io/streamlinelabs/streamline-operator:latest".to_string()
+    "ghcr.io/streamlinelabs/streamline:0.4.0".to_string()
 }
 
 fn default_pull_policy() -> String {
@@ -789,6 +794,16 @@ mod tests {
         assert_eq!(spec.kafka_port, 9092);
         assert_eq!(spec.http_port, 9094);
         assert!(spec.metrics_enabled);
+    }
+
+    #[test]
+    fn test_default_image_is_the_server_not_the_operator() {
+        let spec: ClusterSpec = serde_json::from_str("{}").unwrap();
+        assert_eq!(spec.image, "ghcr.io/streamlinelabs/streamline:0.4.0");
+        assert!(
+            !spec.image.contains("streamline-operator"),
+            "brokers must not default to the operator image"
+        );
     }
 
     #[test]
