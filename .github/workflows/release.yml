@@ -21,7 +21,7 @@ jobs:
       # verified against Cargo.toml.
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88"
@@ -76,7 +76,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88"
@@ -95,7 +95,7 @@ jobs:
           ARCHIVE="streamline-operator-${TAG}-${{ matrix.target }}.tar.gz"
           tar czf "${ARCHIVE}" -C target/${{ matrix.target }}/release streamline-operator
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
@@ -111,10 +111,10 @@ jobs:
     env:
       RELEASE_VERSION: ${{ needs.verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -135,7 +135,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.repository }}
           tags: |
@@ -143,7 +143,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
           labels: |
             org.opencontainers.image.version=${{ env.RELEASE_VERSION }}
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         id: build
         with:
           context: .
@@ -188,7 +188,7 @@ jobs:
           grep -q "image: ${IMAGE_REPO}@${DIGEST}" deploy/operator.release.yaml
           mv deploy/operator.release.yaml operator.yaml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deployment-manifest
           path: operator.yaml
@@ -213,7 +213,7 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88"
@@ -232,7 +232,7 @@ jobs:
           cargo run --bin streamline-operator -- --generate-crds-dir deploy/crds
           git diff --exit-code -- deploy/crds
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: crds
           path: crds.yaml
@@ -246,15 +246,15 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: binary-*
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: crds
           path: .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: deployment-manifest
           path: .
@@ -285,14 +285,14 @@ jobs:
             SHA256SUMS
 
       - name: Attest release artifacts
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             ./*.tar.gz
             crds.yaml
             operator.yaml
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
