@@ -5,8 +5,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -16,20 +15,54 @@ jobs:
   verify:
     name: Verify Release
     runs-on: ubuntu-latest
+    outputs:
+      # Consumed by build-docker: GITHUB_ENV does not cross job boundaries, and
+      # the image tag/label checks must compare against the same value this job
+      # verified against Cargo.toml.
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.88"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Verify version matches tag
+        id: version
         run: |
+          set -euo pipefail
           TAG=${GITHUB_REF#refs/tags/v}
           CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           [ "$TAG" = "$CARGO_VERSION" ] || (echo "Tag v$TAG != Cargo.toml $CARGO_VERSION" && exit 1)
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      # The checked-in deployment must never point at a runnable image: it
+      # tracks the working tree, which is always ahead of the last release.
+      # Publishing is what turns the placeholder into a real, immutable
+      # reference, so a release that finds the placeholder already replaced is
+      # a release built from manifests nobody verified.
+      - name: Verify the checked-in manifests carry the release placeholder
+        run: |
+          set -euo pipefail
+          grep -q 'image: ghcr.io/streamlinelabs/streamline-operator:REPLACE_WITH_RELEASED_IMAGE' \
+            deploy/operator.yaml
+          if grep -Eq '^[^#]*newTag' deploy/kustomization.yaml; then
+            echo "deploy/kustomization.yaml pins an image tag; the release supplies the digest"
+            exit 1
+          fi
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo test --locked
+
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies
+        run: cargo audit
 
   build-binary:
     name: Build (${{ matrix.target }})
@@ -46,6 +79,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.88"
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Install cross-compilation tools
@@ -54,7 +88,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
-      - run: cargo build --release --target ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package binary
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
@@ -70,31 +104,109 @@ jobs:
     name: Build Docker Image
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.verify.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # OCI repository names must be lowercase. `github.repository` preserves
+      # the organisation's display casing, while metadata-action normalises its
+      # output; using the raw value later made tag verification fail and could
+      # render an InvalidImageName into the release manifest.
+      - name: Normalize image repository
+        id: image
+        env:
+          RAW_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          repository="$(printf '%s' "$RAW_IMAGE" | tr '[:upper:]' '[:lower:]')"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.image.outputs.repository }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.version=${{ env.RELEASE_VERSION }}
       - uses: docker/build-push-action@v5
+        id: build
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      # Tag, crate version, and image labels must agree, and the manifest the
+      # release ships must reference the digest that was just pushed — not a
+      # mutable tag that can later point somewhere else.
+      - name: Verify image tags and labels match the release version
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          LABELS: ${{ steps.meta.outputs.labels }}
+          IMAGE_REPO: ${{ steps.image.outputs.repository }}
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          make verify-release TAG="${GITHUB_REF#refs/tags/}" IMAGE="${IMAGE_REPO}@${DIGEST}"
+          grep -q "org.opencontainers.image.version=${RELEASE_VERSION}" <<< "$LABELS"
+          grep -qx "${IMAGE_REPO}:${RELEASE_VERSION}" <<< "$TAGS"
+
+      - name: Render the release deployment manifest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_REPO: ${{ steps.image.outputs.repository }}
+        run: |
+          set -euo pipefail
+          make release-manifests IMAGE="${IMAGE_REPO}@${DIGEST}"
+          # Fail closed: the shipped manifest must be immutable and must not
+          # still contain the placeholder.
+          if grep -q 'REPLACE_WITH_RELEASED_IMAGE' deploy/operator.release.yaml; then
+            echo "placeholder survived substitution"
+            exit 1
+          fi
+          grep -q "image: ${IMAGE_REPO}@${DIGEST}" deploy/operator.release.yaml
+          mv deploy/operator.release.yaml operator.yaml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deployment-manifest
+          path: operator.yaml
+
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            cosign sign --yes "${tag}@${DIGEST}"
+          done <<< "$TAGS"
 
   generate-crds:
     name: Generate CRD Manifests
@@ -103,13 +215,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88"
       - uses: Swatinem/rust-cache@v2
-      - name: Generate CRDs
+
+      # Fail closed: a release must never ship without the manifests that match
+      # the binary, and the checked-in manifests must match the generator.
+      - name: Generate release CRD manifest
+        run: cargo run --bin streamline-operator -- --generate-crds > crds.yaml
+
+      - name: Verify the manifest is not empty
+        run: test -s crds.yaml
+
+      - name: Verify checked-in CRDs match the generator
         run: |
-          cargo run --bin streamline-operator -- --generate-crds > crds.yaml 2>/dev/null || \
-          echo "CRD generation not yet implemented — skipping"
+          cargo run --bin streamline-operator -- --generate-crds-dir deploy/crds
+          git diff --exit-code -- deploy/crds
+
       - uses: actions/upload-artifact@v4
-        if: hashFiles('crds.yaml') != ''
         with:
           name: crds
           path: crds.yaml
@@ -118,6 +241,10 @@ jobs:
     name: Create GitHub Release
     needs: [build-binary, build-docker, generate-crds]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -127,10 +254,51 @@ jobs:
         with:
           name: crds
           path: .
-        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: deployment-manifest
+          path: .
+
+      # The published manifest is the only one that names a real image, and it
+      # names it by digest.
+      - name: Verify the released manifest is immutable
+        run: |
+          set -euo pipefail
+          if grep -q 'REPLACE_WITH_RELEASED_IMAGE' operator.yaml; then
+            echo "the released manifest still carries the placeholder image"
+            exit 1
+          fi
+          grep -q 'image: .*@sha256:' operator.yaml
+
+      - name: Create checksums
+        run: sha256sum ./*.tar.gz crds.yaml operator.yaml > SHA256SUMS
+
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign checksum manifest
+        run: |
+          cosign sign-blob --yes \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem \
+            SHA256SUMS
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            ./*.tar.gz
+            crds.yaml
+            operator.yaml
+
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
             *.tar.gz
             crds.yaml
+            operator.yaml
+            SHA256SUMS
+            SHA256SUMS.sig
+            SHA256SUMS.pem

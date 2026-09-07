@@ -15,9 +15,59 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.80"
+          toolchain: "1.88"
           components: rustfmt, clippy
 
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
+
+      # Hermetic: unit tests plus the static manifest / CRD drift / docs-schema
+      # suites in tests/. No cluster, network, or Docker required.
       - run: cargo test
+
+      # Belt and braces: regenerating the CRDs must not change the tree.
+      - name: Verify generated CRDs are committed
+        run: |
+          cargo run --bin streamline-operator -- --generate-crds-dir deploy/crds
+          git diff --exit-code -- deploy/crds
+
+      # Release preparation must stay reproducible even outside a tag build:
+      # the placeholder image has to be substitutable, and the rendered
+      # manifest must never keep the placeholder.
+      - name: Verify release manifest rendering fails closed
+        run: |
+          set -euo pipefail
+          if make release-manifests; then
+            echo "release-manifests must refuse to run without IMAGE"
+            exit 1
+          fi
+          make release-manifests IMAGE=ghcr.io/streamlinelabs/streamline-operator@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          if grep -q REPLACE_WITH_RELEASED_IMAGE deploy/operator.release.yaml; then
+            echo "placeholder survived substitution"
+            exit 1
+          fi
+          rm -f deploy/operator.release.yaml
+          make verify-release TAG="v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" \
+            IMAGE=ghcr.io/streamlinelabs/streamline-operator@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          git diff --exit-code -- deploy
+
+  integration:
+    name: Integration (gated)
+    runs-on: ubuntu-latest
+    # The gated suite needs a Streamline server image; run it only when the
+    # image is reachable for this event (pushes to the default branch of the
+    # source repo), and never block PRs from forks on registry access.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+      - name: Start Streamline server
+        run: make integration-up
+      - name: Run gated integration tests
+        run: make test-integration
+      - name: Stop Streamline server
+        if: always()
+        run: make integration-down

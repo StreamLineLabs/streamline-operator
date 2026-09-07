@@ -1,24 +1,44 @@
+# Namespaced Role — the operator's default, least-privilege scope.
+#
+# This used to be a ClusterRole bound cluster-wide. The operator only ever
+# watched (and could only be authorised for) resources it actually reconciles,
+# and the shipped Deployment now passes `--namespace=$(OPERATOR_NAMESPACE)`, so
+# cluster-scoped permissions granted reach the operator never used and could
+# not justify.
+#
+# Cluster-wide mode (`--namespace=` with an empty value) is packaged as the
+# opt-in overlays/cloud/ Kustomize overlay. Its ClusterRole carries these
+# reconciliation rules while Lease access remains namespaced.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: streamline-operator
+  namespace: streamline-system
   labels:
     app.kubernetes.io/name: streamline-operator
     app.kubernetes.io/part-of: streamline
 rules:
   # -----------------------------------------------------------
   # Streamline CRDs (streamline.io/v1alpha1)
-  # The operator watches and reconciles all three custom resources.
+  # Exactly the resources this operator runs a controller for, matching the
+  # CRDs installed by deploy/crds/kustomization.yaml.
+  # The operator watches these resources and patches finalizers, but users or
+  # the Cloud control plane create and delete them. It therefore has no
+  # create/update/delete grant on the main resources.
+  #
+  # streamlinebranches, streamlinecontracts, streamlinememories,
+  # streamlinebackups, and streamlineedges are intentionally absent: nothing
+  # reconciles them, their CRDs are not installed, and granting access would
+  # let a future controller start reconciling an API the Streamline server does
+  # not expose. tests/crd_manifests.rs fails if this list and the generator's
+  # reconciliation metadata disagree.
   # -----------------------------------------------------------
   - apiGroups: ["streamline.io"]
     resources:
       - streamlineclusters
       - streamlinetopics
       - streamlineusers
-      - streamlinebranches
-      - streamlinebackups
-      - streamlinecontracts
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "patch"]
 
   # CRD status subresource — each controller updates .status
   - apiGroups: ["streamline.io"]
@@ -26,10 +46,7 @@ rules:
       - streamlineclusters/status
       - streamlinetopics/status
       - streamlineusers/status
-      - streamlinebranches/status
-      - streamlinebackups/status
-      - streamlinecontracts/status
-    verbs: ["get", "update", "patch"]
+    verbs: ["patch"]
 
   # CRD finalizers — controllers add/remove finalizers for safe cleanup
   - apiGroups: ["streamline.io"]
@@ -37,9 +54,6 @@ rules:
       - streamlineclusters/finalizers
       - streamlinetopics/finalizers
       - streamlineusers/finalizers
-      - streamlinebranches/finalizers
-      - streamlinebackups/finalizers
-      - streamlinecontracts/finalizers
     verbs: ["update"]
 
   # -----------------------------------------------------------
@@ -67,12 +81,18 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch"]
 
   # -----------------------------------------------------------
-  # Secrets (v1)
-  # UserController creates Secrets for user credentials.
+  # Secrets: NO ACCESS, deliberately.
+  #
+  # The operator never calls the Secret API. TLS keypairs and CA bundles named
+  # by a StreamlineCluster are referenced from a SecretVolumeSource and read by
+  # the kubelet on the broker's behalf, which needs no operator permission, and
+  # user credentials are never provisioned (user management is unsupported —
+  # see src/controllers/user.rs). The previous read/list/watch grant therefore
+  # bought nothing and made a compromised operator a cluster-wide secret
+  # reader.
+  #
+  # tests/static_manifests.rs fails if any shipped role mentions secrets.
   # -----------------------------------------------------------
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
 
   # -----------------------------------------------------------
   # PersistentVolumeClaims (v1)
@@ -100,7 +120,8 @@ rules:
 
   # -----------------------------------------------------------
   # HorizontalPodAutoscalers (autoscaling/v2)
-  # AutoscalingController creates/updates/deletes HPAs for clusters.
+  # The cluster controller deletes stale operator-owned HPAs on every
+  # reconcile, so `delete` is required even though autoscaling is rejected.
   # -----------------------------------------------------------
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
@@ -108,17 +129,19 @@ rules:
 
   # -----------------------------------------------------------
   # Leases (coordination.k8s.io/v1)
-  # Used for leader election in HA deployments.
+  # Leader election for HA deployments. The Lease lives in the namespace the
+  # operator runs in, which this Role covers; `--leader-election-namespace`
+  # pointing elsewhere needs a Role/RoleBinding in that namespace.
   # -----------------------------------------------------------
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # -----------------------------------------------------------
-  # Namespaces (v1)
-  # The operator reads namespaces to detect its own namespace for
-  # leader election and to support multi-namespace watching.
+  # Namespaces: NO ACCESS, deliberately.
+  #
+  # Namespaces are cluster-scoped and cannot be granted by a Role at all. The
+  # operator does not need them: it reads its own namespace from the projected
+  # service account token file (see leader_election::detect_namespace), and the
+  # namespace it watches is passed with --namespace.
   # -----------------------------------------------------------
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "list", "watch"]

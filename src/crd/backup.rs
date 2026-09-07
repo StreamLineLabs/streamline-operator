@@ -74,20 +74,15 @@ fn default_compression() -> String {
 }
 
 /// Type of backup operation
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 pub enum BackupType {
     /// Full backup of all data and metadata
+    #[default]
     Full,
     /// Incremental backup since last full/incremental backup
     Incremental,
     /// Metadata-only backup (topics, configs, ACLs, offsets — no message data)
     MetadataOnly,
-}
-
-impl Default for BackupType {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 /// Backup storage destination
@@ -238,6 +233,17 @@ mod tests {
         assert_eq!(spec.cluster_ref, "my-cluster");
         assert_eq!(spec.retention_count, 7);
         assert!(spec.include_offsets);
+    }
+
+    #[test]
+    fn test_backup_type_default_is_full() {
+        // Regression: `Default` is now derived — the default variant and its
+        // serde representation must stay unchanged.
+        assert_eq!(BackupType::default(), BackupType::Full);
+        assert_eq!(
+            serde_json::to_string(&BackupType::default()).unwrap_or_default(),
+            "\"Full\""
+        );
     }
 
     #[test]

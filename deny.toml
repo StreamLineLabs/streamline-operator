@@ -9,13 +9,13 @@ targets = [
 ]
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+version = 2
+unmaintained = "workspace"
 yanked = "warn"
-notice = "warn"
 ignore = []
 
 [licenses]
+version = 2
 confidence-threshold = 0.8
 allow = [
     "MIT",
@@ -27,9 +27,10 @@ allow = [
     "Zlib",
     "0BSD",
     "CC0-1.0",
+    "CDLA-Permissive-2.0",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
 ]
-deny = ["GPL-2.0", "GPL-3.0", "AGPL-3.0"]
 
 [[licenses.clarify]]
 name = "ring"
@@ -46,4 +47,3 @@ deny = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "warn"
-

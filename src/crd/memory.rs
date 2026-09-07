@@ -174,6 +174,8 @@ pub struct MemoryCondition {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     use kube::CustomResourceExt;
 

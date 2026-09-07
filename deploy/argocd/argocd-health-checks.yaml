@@ -16,40 +16,53 @@ metadata:
     app.kubernetes.io/part-of: argocd
 data:
   # Health checks for Streamline CRDs
+  # Phases below are exactly the ClusterPhase variants in src/crd/cluster.rs;
+  # tests/docs_examples.rs fails if they drift. The previous block tested for
+  # "Provisioning" and "Error", which the CRD does not define, so those states
+  # silently fell through to "Unknown".
   resource.customizations.health.streamline.io_StreamlineCluster: |
     hs = {}
     if obj.status ~= nil then
       if obj.status.phase == "Running" then
         hs.status = "Healthy"
         hs.message = "Cluster is running"
-      elseif obj.status.phase == "Provisioning" or obj.status.phase == "Updating" then
+      elseif obj.status.phase == "Pending" or obj.status.phase == "Scaling"
+          or obj.status.phase == "Upgrading" then
         hs.status = "Progressing"
         hs.message = "Cluster is " .. obj.status.phase
-      elseif obj.status.phase == "Failed" or obj.status.phase == "Error" then
+      elseif obj.status.phase == "Failed" then
         hs.status = "Degraded"
-        hs.message = obj.status.error or "Cluster is in failed state"
+        hs.message = obj.status.errorMessage or "Cluster reconciliation failed"
+      elseif obj.status.phase == "Terminating" then
+        hs.status = "Progressing"
+        hs.message = "Cluster is terminating"
       else
         hs.status = "Unknown"
-        hs.message = "Phase: " .. (obj.status.phase or "unknown")
       end
     else
       hs.status = "Progressing"
-      hs.message = "Waiting for status"
+      hs.message = "Waiting for reconciliation"
     end
     return hs
 
+  # Phases below are exactly the TopicPhase variants in src/crd/topic.rs.
+  # A topic whose spec sets configuration the Streamline server does not apply
+  # is rejected and reports "Failed", which surfaces here as Degraded.
   resource.customizations.health.streamline.io_StreamlineTopic: |
     hs = {}
     if obj.status ~= nil then
       if obj.status.phase == "Ready" then
         hs.status = "Healthy"
         hs.message = "Topic is ready"
-      elseif obj.status.phase == "Creating" or obj.status.phase == "Updating" then
+      elseif obj.status.phase == "Pending" or obj.status.phase == "Updating" then
         hs.status = "Progressing"
         hs.message = "Topic is " .. obj.status.phase
       elseif obj.status.phase == "Failed" then
         hs.status = "Degraded"
-        hs.message = obj.status.error or "Topic creation failed"
+        hs.message = obj.status.errorMessage or "Topic reconciliation failed"
+      elseif obj.status.phase == "Terminating" then
+        hs.status = "Progressing"
+        hs.message = "Topic is terminating"
       else
         hs.status = "Unknown"
       end
@@ -59,18 +72,28 @@ data:
     end
     return hs
 
+  # StreamlineUser is installed but unsupported: the Streamline server exposes
+  # no user API, so the controller always publishes phase "Unsupported" and
+  # creates nothing. Surfacing that as Degraded (rather than the previous
+  # catch-all "Unknown") makes an Argo CD application that ships a
+  # StreamlineUser fail visibly instead of appearing to converge. The phases
+  # below are the ones src/crd/user.rs actually defines.
   resource.customizations.health.streamline.io_StreamlineUser: |
     hs = {}
     if obj.status ~= nil then
-      if obj.status.phase == "Active" then
+      if obj.status.phase == "Unsupported" then
+        hs.status = "Degraded"
+        hs.message = obj.status.errorMessage or
+          "User management is not supported: the Streamline server exposes no user API"
+      elseif obj.status.phase == "Ready" then
         hs.status = "Healthy"
-        hs.message = "User is active"
-      elseif obj.status.phase == "Creating" then
+        hs.message = "User is ready"
+      elseif obj.status.phase == "Pending" or obj.status.phase == "Updating" then
         hs.status = "Progressing"
-        hs.message = "User is being created"
+        hs.message = "User is " .. obj.status.phase
       elseif obj.status.phase == "Failed" then
         hs.status = "Degraded"
-        hs.message = obj.status.error or "User creation failed"
+        hs.message = obj.status.errorMessage or "User reconciliation failed"
       else
         hs.status = "Unknown"
       end
@@ -80,38 +103,16 @@ data:
     end
     return hs
 
-  resource.customizations.health.streamline.io_StreamlineBackup: |
-    hs = {}
-    if obj.status ~= nil then
-      if obj.status.phase == "Completed" then
-        hs.status = "Healthy"
-        hs.message = "Backup completed successfully"
-      elseif obj.status.phase == "Running" or obj.status.phase == "Pending" then
-        hs.status = "Progressing"
-        hs.message = "Backup is " .. obj.status.phase
-      elseif obj.status.phase == "Failed" then
-        hs.status = "Degraded"
-        hs.message = obj.status.error or "Backup failed"
-      elseif obj.status.phase == "Expired" then
-        hs.status = "Healthy"
-        hs.message = "Backup expired by retention policy"
-      else
-        hs.status = "Unknown"
-      end
-    else
-      hs.status = "Progressing"
-      hs.message = "Waiting for backup to start"
-    end
-    return hs
+  # No health check for StreamlineBackup, StreamlineBranch, StreamlineContract,
+  # StreamlineMemory, or StreamlineEdge: those CRDs are schema-only. Nothing
+  # installs or reconciles them, so a customization for them would advertise
+  # support this operator does not implement. See the README, "Schema-only
+  # CRDs". tests/docs_examples.rs fails if one is re-added.
 
-  # Resource actions for Streamline CRDs
-  resource.customizations.actions.streamline.io_StreamlineCluster: |
-    discovery.lua: |
-      actions = {}
-      actions["restart"] = {["disabled"] = false}
-      return actions
-    definitions:
-    - name: restart
-      action.lua: |
-        obj.spec.restartAt = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        return obj
+  # No resource actions.
+  #
+  # The previous `restart` action set `spec.restartAt`, which is not a field of
+  # the StreamlineCluster schema. Structural CRD schemas prune unknown fields,
+  # so the API server dropped it and the button did nothing while appearing to
+  # work. Restart a cluster with `kubectl rollout restart statefulset/<name>`
+  # until the CRD gains a real field for it.

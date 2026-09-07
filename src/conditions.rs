@@ -113,7 +113,12 @@ mod tests {
 
     #[test]
     fn test_build_condition() {
-        let cond = build_condition(CLUSTER_CONDITION_READY, CONDITION_TRUE, "AllReady", "All brokers ready");
+        let cond = build_condition(
+            CLUSTER_CONDITION_READY,
+            CONDITION_TRUE,
+            "AllReady",
+            "All brokers ready",
+        );
         assert_eq!(cond.condition_type, "Ready");
         assert_eq!(cond.status, "True");
         assert!(cond.last_transition_time.is_some());

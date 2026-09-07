@@ -1,5 +1,18 @@
 # CRD Installation
+#
 # Install with: kubectl apply -k deploy/crds/
+#
+# The manifests here are generated from the `#[kube(...)]` annotations in
+# `src/crd/` — regenerate with `make generate-crds`, never edit by hand.
+# `cargo test` fails if they drift (see `tests/crd_manifests.rs`).
+#
+# Only CRDs that a controller in this operator reconciles are installed.
+# StreamlineBranch, StreamlineContract, StreamlineMemory, StreamlineBackup, and
+# StreamlineEdge manifests are generated for reference but deliberately left
+# out: the Streamline server exposes no compatible API for them (each generated
+# manifest states the specific reason in its header), so nothing reconciles
+# them and installing them would advertise unimplemented behaviour and let
+# users create resources that can only ever sit unreconciled.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -7,5 +20,3 @@ resources:
   - streamlinecluster-crd.yaml
   - streamlinetopic-crd.yaml
   - streamlineuser-crd.yaml
-  - streamlinebranch-crd.yaml
-  - streamlinecontract-crd.yaml

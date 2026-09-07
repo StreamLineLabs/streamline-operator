@@ -1,22 +1,34 @@
 # Docker Compose for operator integration testing
 #
-# Starts a Streamline server and a kind-compatible Kubernetes API.
-# The operator can be tested against these services locally.
+# Starts a Streamline server for the explicitly gated integration suite in
+# `tests/integration.rs`. Nothing in the default `cargo test` run depends on it.
 #
-# Usage: docker compose -f docker-compose.test.yml up -d
-version: "3.8"
+# Usage:
+#   make integration-up          # or: docker compose -f docker-compose.test.yml up -d --wait
+#   make test-integration        # cargo test --test integration -- --ignored
+#   make integration-down
+#
+# Configuration (all optional — defaults match tests/integration.rs):
+#   STREAMLINE_TEST_IMAGE        Server image         (default ghcr.io/streamlinelabs/streamline:0.4.0)
+#   STREAMLINE_TEST_KAFKA_PORT   Host Kafka port      (default 9092)
+#   STREAMLINE_TEST_HTTP_PORT    Host HTTP API port   (default 9094)
+#   STREAMLINE_TEST_LOG_LEVEL    Server log verbosity (default info)
+#
+# Example:
+#   STREAMLINE_TEST_IMAGE=ghcr.io/streamlinelabs/streamline:0.4.0 \
+#   STREAMLINE_TEST_HTTP_PORT=19094 make integration-up
 services:
   streamline:
-    image: ghcr.io/streamlinelabs/streamline:0.2.0
+    image: ${STREAMLINE_TEST_IMAGE:-ghcr.io/streamlinelabs/streamline:0.4.0}
     ports:
-      - "9092:9092"
-      - "9094:9094"
+      - "${STREAMLINE_TEST_KAFKA_PORT:-9092}:9092"
+      - "${STREAMLINE_TEST_HTTP_PORT:-9094}:9094"
     environment:
-      - STREAMLINE_LOG_LEVEL=info
+      - STREAMLINE_LOG_LEVEL=${STREAMLINE_TEST_LOG_LEVEL:-info}
       - STREAMLINE_PLAYGROUND=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9094/health"]
       interval: 5s
       timeout: 5s
       retries: 10
-
+      start_period: 10s

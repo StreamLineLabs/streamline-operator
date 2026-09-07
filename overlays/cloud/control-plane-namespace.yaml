@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: streamline-system
+  labels:
+    # Streamline Cloud's tenant NetworkPolicies admit broker HTTP 9094 only
+    # from the tenant namespace itself or a namespace carrying this label.
+    streamline.io/control-plane: "true"

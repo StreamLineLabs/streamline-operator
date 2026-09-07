@@ -32,12 +32,41 @@ spec:
         fsGroup: 1000
       containers:
         - name: operator
-          image: ghcr.io/streamlinelabs/streamline-operator:0.3.0
-          imagePullPolicy: IfNotPresent
+          # RELEASE PLACEHOLDER — intentionally unpullable.
+          #
+          # This manifest tracks the working tree, which is ahead of every
+          # published operator image. Pointing it at a real tag (it used to say
+          # `:0.3.0`) meant `kubectl apply -f deploy/operator.yaml` silently ran
+          # an *older* operator than the manifests, CRDs, and RBAC beside it —
+          # an operator that still installed unsupported CRDs and still ignored
+          # `--namespace`. There is no correct tag to put here until a release
+          # is cut, so the default fails closed: the tag is a valid reference
+          # that no registry serves, so the Pod stops at ImagePullBackOff
+          # instead of running the wrong code.
+          #
+          # To deploy, substitute a released, immutable image:
+          #   make release-manifests IMAGE=ghcr.io/streamlinelabs/streamline-operator@sha256:...
+          # or, with kustomize:
+          #   kustomize edit set image \
+          #     ghcr.io/streamlinelabs/streamline-operator=<repo>@sha256:<digest>
+          #
+          # `tests/static_manifests.rs` fails if this placeholder is replaced by
+          # a runnable tag in the repository.
+          image: ghcr.io/streamlinelabs/streamline-operator:REPLACE_WITH_RELEASED_IMAGE
+          # Always, not IfNotPresent: a node with a stale cached layer for this
+          # repository must not be able to start the placeholder.
+          imagePullPolicy: Always
           args:
             - --leader-elect
-            - --metrics-bind-address=:8080
-            - --health-probe-bind-address=:8081
+            # Watch only the namespace the operator runs in. This matches the
+            # namespaced Role/RoleBinding in deploy/rbac; cluster-wide mode
+            # (`--namespace=`) is packaged separately in overlays/cloud/.
+            # Kubernetes expands $(VAR) in args from the container's env.
+            - --namespace=$(OPERATOR_NAMESPACE)
+            # Must be a full socket address: ":8080" does not parse and left
+            # both auxiliary servers unbound, so the probes never answered.
+            - --metrics-bind-address=0.0.0.0:8080
+            - --health-probe-bind-address=0.0.0.0:8081
           ports:
             - name: metrics
               containerPort: 8080
@@ -76,6 +105,12 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 5
+          # /readyz means "this operator process is healthy", which includes a
+          # leader-election standby waiting for the Lease. Gating readiness on
+          # leadership deadlocks rolling updates: the new pod would wait for
+          # the lease the outgoing pod still holds, while the rollout waits for
+          # the new pod to be ready. Use /leaderz (or the
+          # `streamline_operator_leader` gauge) to find the active replica.
           readinessProbe:
             httpGet:
               path: /readyz

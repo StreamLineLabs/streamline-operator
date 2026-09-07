@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Cloud mode keeps the operator itself in streamline-system while watching
+# Streamline resources in every namespace. The default install remains the
+# base; this overlay narrows its namespaced Role to the leader Lease and adds
+# separate cluster-wide reconciliation permissions.
+resources:
+  - ../../deploy
+  - cluster-role.yaml
+  - cluster-role-binding.yaml
+
+patches:
+  - path: operator-watch-all.yaml
+  - path: leader-election-role.yaml
+  - path: control-plane-namespace.yaml

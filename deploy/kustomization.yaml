@@ -7,14 +7,22 @@ resources:
   - namespace.yaml
   - crds/
   - rbac/service-account.yaml
-  - rbac/cluster-role.yaml
-  - rbac/cluster-role-binding.yaml
+  - rbac/role.yaml
+  - rbac/role-binding.yaml
   - operator.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: streamline
   app.kubernetes.io/managed-by: kustomize
 
-images:
-  - name: ghcr.io/streamlinelabs/streamline-operator
-    newTag: "0.3.0"
+# No `images:` override.
+#
+# This overlay used to pin `newTag: "0.3.0"`, which re-introduced a published —
+# and by now outdated — operator image even when deploy/operator.yaml was
+# corrected. The base manifest carries a deliberately unpullable placeholder;
+# supplying a real, immutable image is the deployer's step:
+#
+#   kustomize edit set image \
+#     ghcr.io/streamlinelabs/streamline-operator=<repo>@sha256:<digest>
+#
+# The release workflow does exactly this with the digest it just pushed.

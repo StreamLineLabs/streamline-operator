@@ -1,0 +1,21 @@
+# Namespaced RoleBinding. Grants the operator's ServiceAccount the Role above
+# in `streamline-system` only.
+#
+# Running the operator cluster-wide (`--namespace=` empty) uses
+# overlays/cloud/, which adds a ClusterRoleBinding to this ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: streamline-operator
+  namespace: streamline-system
+  labels:
+    app.kubernetes.io/name: streamline-operator
+    app.kubernetes.io/part-of: streamline
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: streamline-operator
+subjects:
+  - kind: ServiceAccount
+    name: streamline-operator
+    namespace: streamline-system

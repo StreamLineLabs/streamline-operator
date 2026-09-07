@@ -18,5 +18,9 @@ Thumbs.db
 # Test coverage
 coverage/
 
+# Rendered release manifests (make release-manifests) — never checked in, so a
+# deployable manifest can only ever come from an explicit, immutable image.
+deploy/*.release.yaml
+
 # Misc
 *.log

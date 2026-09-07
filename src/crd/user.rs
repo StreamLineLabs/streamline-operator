@@ -216,7 +216,7 @@ pub struct UserQuotas {
 }
 
 /// Status of the StreamlineUser
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UserStatus {
     /// Whether the user is ready
@@ -258,6 +258,8 @@ pub enum UserPhase {
     /// User is being created
     #[default]
     Pending,
+    /// User management is not supported by the referenced Streamline server
+    Unsupported,
     /// User is ready
     Ready,
     /// User is being updated
@@ -269,7 +271,7 @@ pub enum UserPhase {
 }
 
 /// Condition of the user
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UserCondition {
     /// Type of condition
@@ -293,6 +295,8 @@ fn default_password_key() -> String {
 
 #[cfg(test)]
 mod tests {
+    // unwrap/expect are acceptable in tests; the crate-wide lint targets production code.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
     #[test]
